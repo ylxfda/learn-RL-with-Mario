@@ -1,0 +1,203 @@
+# DreamerV3 Configuration for Super Mario Bros Stage 1-1
+#
+# This configuration is specifically tuned for training DreamerV3 on
+# Super Mario Bros level 1-1. The hyperparameters are based on the
+# paper "Mastering Diverse Domains through World Models" (Hafner et al., 2023).
+#
+# Usage:
+#   python train_mario.py --configs mario
+
+# ============================================================================
+# Default Hyperparameters
+# ============================================================================
+defaults:
+  # === Logging and Directories ===
+  logdir: ./logdir/mario  # Directory for logs and checkpoints
+  seed: 0                  # Random seed for reproducibility
+  steps: 400000            # Total training steps (400K)
+  eval_every: 10000        # Evaluate every N steps
+  eval_episode_num: 10     # Number of evaluation episodes
+  log_every: 10000         # Log metrics every N steps
+  device: 'cuda:0'         # Device: 'cuda:0', 'cuda:1', or 'cpu'
+  compile: False           # PyTorch 2.0 compilation (set True if available)
+  precision: 32            # Precision: 32 (float32) or 16 (mixed precision)
+  video_pred_log: True     # Whether to log video predictions
+
+  # === Environment Settings ===
+  task: 'mario'                    # Task identifier
+  size: [64, 64]                   # Observation size (height, width)
+  envs: 1                          # Number of parallel environments
+  action_repeat: 4                 # Action repeat (frame skip)
+  grayscale: False                 # Whether to use grayscale images
+  prefill: 2500                    # Random exploration steps before training
+  reward_EMA: True                 # Use EMA for reward normalization
+  mario_action_set: simple         # Action set: 'simple' (7 actions)
+  mario_flag_reward: 1000.0        # Bonus reward for reaching flag
+  mario_reward_scale: 1.0          # Scale for distance-based rewards
+  mario_time_penalty: -0.1         # Penalty for time spent
+  mario_death_penalty: -15.0       # Penalty for losing a life
+  time_limit: 108000               # Maximum episode length (in frames)
+
+  # === World Model Architecture ===
+  # RSSM (Recurrent State Space Model) parameters
+  dyn_stoch: 32              # Number of categorical distributions (stoch)
+  dyn_discrete: 32           # Classes per categorical (discrete)
+  dyn_deter: 512             # Deterministic state dimension (deter)
+  dyn_hidden: 512            # Hidden layer size in RSSM
+  dyn_rec_depth: 1           # GRU recurrence depth
+  dyn_mean_act: 'none'       # Mean activation (for continuous)
+  dyn_std_act: 'sigmoid2'    # Std activation (for continuous)
+  dyn_min_std: 0.1           # Minimum std (for continuous)
+
+  # Which prediction heads receive gradients from reconstruction
+  grad_heads: ['decoder', 'reward', 'cont']
+
+  # Shared architecture parameters
+  units: 512                 # Hidden units in MLPs
+  act: 'SiLU'                # Activation function (SiLU/Swish)
+  norm: True                 # Use layer normalization
+
+  # === Encoder Configuration ===
+  encoder:
+    mlp_keys: '$^'           # Regex for MLP-encoded obs (none for Mario)
+    cnn_keys: 'image'        # Regex for CNN-encoded obs
+    act: 'SiLU'
+    norm: True
+    cnn_depth: 32            # Base CNN channel depth
+    kernel_size: 4           # Convolution kernel size
+    minres: 4                # Minimum spatial resolution
+    mlp_layers: 5            # MLP layers (not used for Mario)
+    mlp_units: 1024          # MLP units (not used for Mario)
+    symlog_inputs: True      # Apply symlog to vector inputs
+
+  # === Decoder Configuration ===
+  decoder:
+    mlp_keys: '$^'           # Regex for MLP-decoded obs (none for Mario)
+    cnn_keys: 'image'        # Regex for CNN-decoded obs
+    act: 'SiLU'
+    norm: True
+    cnn_depth: 32            # Base CNN channel depth
+    kernel_size: 4           # Convolution kernel size
+    minres: 4                # Minimum spatial resolution
+    mlp_layers: 5            # MLP layers (not used for Mario)
+    mlp_units: 1024          # MLP units (not used for Mario)
+    cnn_sigmoid: False       # Use sigmoid for image output
+    image_dist: mse          # Image distribution: 'mse' or 'normal'
+    vector_dist: symlog_mse  # Vector distribution
+    outscale: 1.0            # Output layer initialization scale
+
+  # === Actor (Policy) Configuration ===
+  actor:
+    layers: 2                # Number of hidden layers
+    dist: 'onehot'           # Distribution: 'onehot' for discrete actions
+    entropy: 0.0003          # Entropy regularization coefficient
+    unimix_ratio: 0.01       # Uniform mixing for exploration
+    std: 'none'              # Std type (not used for discrete)
+    min_std: 0.1             # Minimum std (not used for discrete)
+    max_std: 1.0             # Maximum std (not used for discrete)
+    temp: 0.1                # Temperature for sampling
+    lr: 0.00003              # Learning rate (3e-5)
+    eps: 0.00001             # Adam epsilon (1e-5)
+    grad_clip: 100.0         # Gradient clipping threshold
+    outscale: 1.0            # Output layer initialization scale
+
+  # === Critic (Value Function) Configuration ===
+  critic:
+    layers: 2                       # Number of hidden layers
+    dist: 'symlog_disc'             # Distribution: discretized symlog
+    slow_target: True               # Use slow target network
+    slow_target_update: 1           # Update target every N steps
+    slow_target_fraction: 0.02      # EMA coefficient for target (2%)
+    lr: 0.00003                     # Learning rate (3e-5)
+    eps: 0.00001                    # Adam epsilon (1e-5)
+    grad_clip: 100.0                # Gradient clipping threshold
+    outscale: 0.0                   # Output layer initialization scale
+
+  # === Reward Predictor Configuration ===
+  reward_head:
+    layers: 2                # Number of hidden layers
+    dist: 'symlog_disc'      # Distribution: discretized symlog
+    loss_scale: 1.0          # Loss scale (relative to other losses)
+    outscale: 0.0            # Output layer initialization scale
+
+  # === Continuation Predictor Configuration ===
+  cont_head:
+    layers: 2                # Number of hidden layers
+    loss_scale: 1.0          # Loss scale (relative to other losses)
+    outscale: 1.0            # Output layer initialization scale
+
+  # === World Model Training ===
+  # Loss scales
+  dyn_scale: 0.5             # Dynamics loss scale (KL divergence)
+  rep_scale: 0.1             # Representation loss scale (KL divergence)
+  kl_free: 1.0               # Free nats (minimum KL before penalty)
+  weight_decay: 0.0          # Weight decay coefficient
+  unimix_ratio: 0.01         # Uniform mixing for categorical distributions
+  initial: 'learned'         # Initial state: 'learned' or 'zeros'
+
+  # Optimization
+  batch_size: 16             # Batch size (number of sequences)
+  batch_length: 64           # Sequence length
+  train_ratio: 1024          # Train steps per environment step
+  pretrain: 100              # Pretraining steps before main training
+  model_lr: 0.0001           # World model learning rate (1e-4)
+  opt_eps: 0.00000001        # Adam epsilon (1e-8)
+  grad_clip: 1000            # Gradient clipping threshold
+  dataset_size: 1000000      # Maximum replay buffer size
+  opt: 'adam'                # Optimizer: 'adam', 'adamax', 'sgd'
+
+  # === Actor-Critic Training ===
+  discount: 0.997            # Discount factor γ
+  discount_lambda: 0.95      # λ for TD(λ) returns
+  imag_horizon: 15           # Imagination horizon (planning steps)
+  imag_gradient: 'reinforce' # Gradient estimator: 'dynamics' or 'reinforce'
+  imag_gradient_mix: 0.0     # Mix ratio if using 'both'
+  eval_state_mean: False     # Use mean instead of sample during eval
+
+  # === Exploration (not used for Mario) ===
+  expl_behavior: 'greedy'    # Exploration strategy: 'greedy', 'random'
+  expl_until: 0              # Explore until step N (0 = never)
+  expl_extr_scale: 0.0       # Extrinsic reward scale during exploration
+  expl_intr_scale: 1.0       # Intrinsic reward scale during exploration
+
+# ============================================================================
+# Debugging Configuration (for quick testing)
+# ============================================================================
+debug:
+  steps: 10000               # Fewer steps for debugging
+  prefill: 100               # Less prefill
+  batch_size: 4              # Smaller batches
+  batch_length: 20           # Shorter sequences
+  eval_every: 1000           # Evaluate more frequently
+  log_every: 1000            # Log more frequently
+  pretrain: 10               # Less pretraining
+
+# ============================================================================
+# Notes on Key Hyperparameters
+# ============================================================================
+#
+# World Model:
+#   - dyn_stoch=32, dyn_discrete=32: Total latent dimension = 32*32=1024
+#   - dyn_deter=512: Deterministic recurrent state dimension
+#   - This gives a rich latent representation for complex dynamics
+#
+# Training:
+#   - train_ratio=1024: For each environment step, do 1024 gradient updates
+#   - This is high to fully leverage the learned world model
+#   - batch_size=16, batch_length=64: Train on sequences of 64 steps
+#
+# Actor-Critic:
+#   - imag_horizon=15: Plan 15 steps ahead
+#   - discount=0.997: Long-term planning (episode can be ~1000 steps)
+#   - imag_gradient='reinforce': Use REINFORCE for discrete actions
+#
+# Mario-Specific:
+#   - action_repeat=4: Each action is held for 4 frames (standard for Atari)
+#   - mario_reward_scale=1.0: Reward = distance moved right
+#   - mario_flag_reward=1000.0: Large bonus for completing level
+#   - mario_death_penalty=-15.0: Penalty to discourage dying
+#
+# Hardware:
+#   - This configuration trains in ~12-24 hours on a modern GPU
+#   - Mixed precision (precision=16) can speed up training
+#   - Set envs>1 for parallel environments (requires more memory)
