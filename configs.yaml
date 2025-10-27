@@ -165,7 +165,7 @@ defaults:
 # ============================================================================
 debug:
   steps: 10000               # Fewer steps for debugging
-  prefill: 100               # Less prefill
+  prefill: 1000              # Enough to complete a few episodes
   batch_size: 4              # Smaller batches
   batch_length: 20           # Shorter sequences
   eval_every: 1000           # Evaluate more frequently
