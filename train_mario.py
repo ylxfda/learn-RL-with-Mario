@@ -473,17 +473,20 @@ def simulate(
         # Get actions from agent
         action, agent_state = agent(obs_batch, done, agent_state)
 
-        # Convert action dict to list
-        if isinstance(action, dict):
-            action = [
-                {k: np.array(action[k][i]) for k in action}
-                for i in range(len(envs))
-            ]
-        else:
-            action = list(action)
+        # Convert one-hot actions to indices for environment
+        action_tensor = action["action"]
+        action_indices = action_tensor.argmax(dim=-1)
+        action_np = tools.to_np(action_indices)
+        env_actions = [int(action_np[i]) for i in range(len(envs))]
+
+        # Convert action dict to list for cache (keep one-hot encoding)
+        action = [
+            {k: tools.to_np(action[k][i]) if hasattr(action[k][i], 'cpu') else np.array(action[k][i]) for k in action}
+            for i in range(len(envs))
+        ]
 
         # Step environments
-        results = [e.step(a) for e, a in zip(envs, action)]
+        results = [e.step(a) for e, a in zip(envs, env_actions)]
         obs, reward, done = zip(*[r[:3] for r in results])
         obs = list(obs)
         done = np.array(done)
@@ -496,10 +499,7 @@ def simulate(
         for a, result, idx in zip(action, results, range(len(envs))):
             o, r, d, info = result
             t = {k: tools.convert(v) for k, v in o.items()}
-            if isinstance(a, dict):
-                t.update(a)
-            else:
-                t["action"] = a
+            t.update(a)  # Add action dict (with one-hot "action" and "logprob")
             t["reward"] = r
             t["discount"] = info.get("discount", np.array(1 - float(d)))
             tools.add_to_cache(cache, f"env{idx}", t)
