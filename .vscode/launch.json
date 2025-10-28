@@ -11,7 +11,7 @@
                 "--configs",
                 "defaults",
                 "--logdir",
-                "logs/mario-debug/"
+                "logdir/mario-debug/"
             ],
             "cwd": "${workspaceFolder}",
             "env": {},
