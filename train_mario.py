@@ -524,6 +524,10 @@ def simulate(
                 logger.scalar("eval_return", ep_return)
                 logger.scalar("eval_length", ep_length)
 
+            # Clear the cache for this episode to avoid accumulation
+            # IMPORTANT: Each NPZ file should contain only ONE episode
+            cache["env0"] = {}
+
             # Erase old episodes from cache to save memory
             if not is_eval:
                 tools.erase_over_episodes(cache, config.dataset_size)
