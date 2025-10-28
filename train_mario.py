@@ -419,7 +419,7 @@ def make_dataset(episodes, config):
 
 def simulate(
     agent,
-    envs,
+    env,
     cache,
     logger,
     is_eval=False,
@@ -427,13 +427,13 @@ def simulate(
     steps=0
 ):
     """
-    Simulate agent in environments
+    Simulate agent in single environment
 
-    Runs agent in environment(s), collecting experience and logging metrics.
+    Runs agent in environment, collecting experience and logging metrics.
 
     Args:
         agent: Agent to execute
-        envs: List of environments
+        env: Single environment instance
         cache: Episode cache (replay buffer)
         logger: Logger
         is_eval: Whether this is evaluation (vs training)
@@ -445,97 +445,91 @@ def simulate(
     """
     # Initialize
     step = episode = 0
-    done = np.ones(len(envs), bool)
-    length = np.zeros(len(envs), np.int32)
-    obs = [None] * len(envs)
+    done = True
+    length = 0
+    obs = None
     agent_state = None
 
     while (steps and step < steps) or (episodes and episode < episodes):
-        # Reset environments if needed
-        if done.any():
-            indices = [i for i, d in enumerate(done) if d]
-            results = [envs[i].reset() for i in indices]
+        # Reset environment if needed
+        if done:
+            obs = env.reset()
+            # Add initial transition to cache
+            t = {k: tools.convert(v) for k, v in obs.items()}
+            t["reward"] = 0.0
+            t["discount"] = 1.0
+            tools.add_to_cache(cache, "env0", t)
 
-            for idx, result in zip(indices, results):
-                # Add initial transition to cache
-                t = {k: tools.convert(v) for k, v in result.items()}
-                t["reward"] = 0.0
-                t["discount"] = 1.0
-                tools.add_to_cache(cache, f"env{idx}", t)
-                obs[idx] = result
-
-        # Stack observations
+        # Add batch dimension for agent
         obs_batch = {
-            k: np.stack([o[k] for o in obs])
-            for k in obs[0] if "log_" not in k
+            k: np.expand_dims(obs[k], axis=0)
+            for k in obs if "log_" not in k
+        }
+        done_batch = np.array([done])
+
+        # Get action from agent
+        action, agent_state = agent(obs_batch, done_batch, agent_state)
+
+        # Convert one-hot action to index for environment
+        action_tensor = action["action"]
+        action_index = action_tensor.argmax(dim=-1)
+        action_np = tools.to_np(action_index)
+        env_action = int(action_np[0])
+
+        # Convert action dict for cache (keep one-hot encoding)
+        action_dict = {
+            k: tools.to_np(action[k][0]) if hasattr(action[k][0], 'cpu') else np.array(action[k][0])
+            for k in action
         }
 
-        # Get actions from agent
-        action, agent_state = agent(obs_batch, done, agent_state)
+        # Step environment
+        obs, reward, done, info = env.step(env_action)
 
-        # Convert one-hot actions to indices for environment
-        action_tensor = action["action"]
-        action_indices = action_tensor.argmax(dim=-1)
-        action_np = tools.to_np(action_indices)
-        env_actions = [int(action_np[i]) for i in range(len(envs))]
-
-        # Convert action dict to list for cache (keep one-hot encoding)
-        action = [
-            {k: tools.to_np(action[k][i]) if hasattr(action[k][i], 'cpu') else np.array(action[k][i]) for k in action}
-            for i in range(len(envs))
-        ]
-
-        # Step environments
-        results = [e.step(a) for e, a in zip(envs, env_actions)]
-        obs, reward, done = zip(*[r[:3] for r in results])
-        obs = list(obs)
-        done = np.array(done)
-        episode += int(done.sum())
+        episode += int(done)
         length += 1
-        step += len(envs)
-        length *= (1 - done)
+        step += 1
 
-        # Add transitions to cache
-        for a, result, idx in zip(action, results, range(len(envs))):
-            o, r, d, info = result
-            t = {k: tools.convert(v) for k, v in o.items()}
-            t.update(a)  # Add action dict (with one-hot "action" and "logprob")
-            t["reward"] = r
-            t["discount"] = info.get("discount", np.array(1 - float(d)))
-            tools.add_to_cache(cache, f"env{idx}", t)
+        # Add transition to cache
+        t = {k: tools.convert(v) for k, v in obs.items()}
+        t.update(action_dict)  # Add action dict (with one-hot "action" and "logprob")
+        t["reward"] = reward
+        t["discount"] = info.get("discount", np.array(1 - float(done)))
+        tools.add_to_cache(cache, "env0", t)
 
-        # Log completed episodes
-        if done.any():
-            for i in [idx for idx, d in enumerate(done) if d]:
-                # Save episode
-                tools.save_episodes(
-                    pathlib.Path(logger._logdir) / ("eval_eps" if is_eval else "train_eps"),
-                    {f"env{i}": cache[f"env{i}"]}
-                )
+        # Log completed episode
+        if done:
+            # Save episode
+            tools.save_episodes(
+                pathlib.Path(logger._logdir) / ("eval_eps" if is_eval else "train_eps"),
+                {"env0": cache["env0"]}
+            )
 
-                ep_length = len(cache[f"env{i}"]["reward"]) - 1
-                ep_return = float(np.array(cache[f"env{i}"]["reward"]).sum())
+            ep_length = len(cache["env0"]["reward"]) - 1
+            ep_return = float(np.array(cache["env0"]["reward"]).sum())
 
-                # Log episode metrics
-                for key in list(cache[f"env{i}"].keys()):
-                    if "log_" in key:
-                        logger.scalar(key, float(np.array(cache[f"env{i}"][key]).sum()))
-                        cache[f"env{i}"].pop(key)
+            # Log episode metrics
+            for key in list(cache["env0"].keys()):
+                if "log_" in key:
+                    logger.scalar(key, float(np.array(cache["env0"][key]).sum()))
+                    cache["env0"].pop(key)
 
-                if not is_eval:
-                    # Training metrics
-                    logger.scalar("train_return", ep_return)
-                    logger.scalar("train_length", ep_length)
-                    logger.scalar("train_episodes", 1)
-                    logger.write()
-                else:
-                    # Evaluation metrics
-                    logger.scalar("eval_return", ep_return)
-                    logger.scalar("eval_length", ep_length)
+            if not is_eval:
+                # Training metrics
+                logger.scalar("train_return", ep_return)
+                logger.scalar("train_length", ep_length)
+                logger.scalar("train_episodes", 1)
+                logger.write()
+            else:
+                # Evaluation metrics
+                logger.scalar("eval_return", ep_return)
+                logger.scalar("eval_length", ep_length)
 
-                # Erase old episodes from cache to save memory
-                if not is_eval:
-                    tools.erase_over_episodes(cache, config.dataset_size)
+            # Erase old episodes from cache to save memory
+            if not is_eval:
+                tools.erase_over_episodes(cache, config.dataset_size)
+
+            # Reset length counter
+            length = 0
 
 
 def main(config):
@@ -617,7 +611,7 @@ def main(config):
 
         simulate(
             random_agent,
-            [env],
+            env,
             train_eps,
             logger,
             steps=config.prefill - step
@@ -631,14 +625,16 @@ def main(config):
         # Evaluate
         if config.eval_episode_num > 0:
             print("Evaluation")
+            eval_env = make_mario_env(config)
             simulate(
                 lambda o, d, s: agent(o, d, s, training=False),
-                [make_mario_env(config)],
+                eval_env,
                 eval_eps,
                 logger,
                 is_eval=True,
                 episodes=config.eval_episode_num
             )
+            eval_env.close()
 
             # Log video prediction
             if config.video_pred_log:
@@ -649,7 +645,7 @@ def main(config):
         print(f"Training (step {agent._step}/{config.steps})")
         simulate(
             agent,
-            [env],
+            env,
             train_eps,
             logger,
             steps=config.eval_every

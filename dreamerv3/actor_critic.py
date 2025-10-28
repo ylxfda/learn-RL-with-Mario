@@ -59,14 +59,11 @@ class ActorCritic(nn.Module):
         self._config = config
         self._world_model = world_model
 
-        # Calculate feature size (stoch + deter)
-        if config.dyn_discrete:
-            feat_size = config.dyn_stoch * config.dyn_discrete + config.dyn_deter
-        else:
-            feat_size = config.dyn_stoch + config.dyn_deter
+        # Calculate feature size (stoch + deter) - discrete only
+        feat_size = config.dyn_stoch * config.dyn_discrete + config.dyn_deter
 
         # === Actor Network (Policy) ===
-        # Maps latent features to action distribution
+        # Maps latent features to action distribution (discrete actions only)
         # Paper: Section 2.2, policy π(a_t | z_t, h_t)
         self.actor = MLP(
             feat_size,
@@ -75,11 +72,7 @@ class ActorCritic(nn.Module):
             config.units,
             config.act,
             config.norm,
-            dist=config.actor["dist"],
-            std=config.actor["std"],
-            min_std=config.actor["min_std"],
-            max_std=config.actor["max_std"],
-            absmax=1.0,
+            dist=config.actor["dist"],  # Should be "onehot" for discrete actions
             temp=config.actor["temp"],
             unimix_ratio=config.actor["unimix_ratio"],
             outscale=config.actor["outscale"],
@@ -245,16 +238,13 @@ class ActorCritic(nn.Module):
         metrics.update(tools.tensorstats(target, "target"))
         metrics.update(tools.tensorstats(reward, "imag_reward"))
 
-        # Log actions
-        if self._config.actor["dist"] in ["onehot"]:
-            metrics.update(
-                tools.tensorstats(
-                    torch.argmax(imag_action, dim=-1).float(),
-                    "imag_action"
-                )
+        # Log actions (discrete only)
+        metrics.update(
+            tools.tensorstats(
+                torch.argmax(imag_action, dim=-1).float(),
+                "imag_action"
             )
-        else:
-            metrics.update(tools.tensorstats(imag_action, "imag_action"))
+        )
 
         metrics["actor_entropy"] = tools.to_np(torch.mean(actor_ent))
 

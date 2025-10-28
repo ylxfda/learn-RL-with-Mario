@@ -50,17 +50,18 @@ class RSSM(nn.Module):
         discrete_dim: int = 32,        # Classes per categorical (discrete in paper)
         activation: str = "SiLU",      # Activation function
         use_layer_norm: bool = True,   # Whether to use layer normalization
-        mean_activation: str = "none", # Activation for mean (not used in discrete)
-        std_activation: str = "softplus",  # Activation for std (not used in discrete)
-        min_std: float = 0.1,          # Minimum standard deviation (not used in discrete)
         unimix_ratio: float = 0.01,    # Uniform mixing ratio for categorical
         initial_state: str = "learned",  # Initial state: "learned" or "zeros"
         num_actions: int = None,       # Action space dimension
         embed_dim: int = None,         # Observation embedding dimension
-        device: str = None             # Device for tensors
+        device: str = None,            # Device for tensors
+        # Unused parameters kept for compatibility
+        mean_activation: str = "none",
+        std_activation: str = "softplus",
+        min_std: float = 0.1
     ):
         """
-        Initialize the RSSM dynamics model
+        Initialize the RSSM dynamics model for discrete actions only
 
         Args:
             stoch_dim: Number of categorical distributions (default: 32)
@@ -70,9 +71,6 @@ class RSSM(nn.Module):
             discrete_dim: Number of classes per categorical distribution (default: 32)
             activation: Activation function name (default: "SiLU")
             use_layer_norm: Whether to apply layer normalization (default: True)
-            mean_activation: Activation for continuous mean (default: "none")
-            std_activation: Activation for continuous std (default: "softplus")
-            min_std: Minimum std for continuous distributions (default: 0.1)
             unimix_ratio: Uniform mixing ratio for exploration (default: 0.01)
             initial_state: How to initialize recurrent state (default: "learned")
             num_actions: Dimension of action space (required)
@@ -81,15 +79,12 @@ class RSSM(nn.Module):
         """
         super(RSSM, self).__init__()
 
-        # Store configuration
+        # Store configuration (only discrete actions supported)
         self._stoch_dim = stoch_dim
         self._deter_dim = deter_dim
         self._hidden_dim = hidden_dim
         self._discrete_dim = discrete_dim
-        self._min_std = min_std
         self._rec_depth = rec_depth
-        self._mean_activation = mean_activation
-        self._std_activation = std_activation
         self._unimix_ratio = unimix_ratio
         self._initial_state = initial_state
         self._num_actions = num_actions
@@ -102,11 +97,8 @@ class RSSM(nn.Module):
         # === Imagination Network ===
         # Input: [stoch_{t-1}, action_{t-1}] -> Hidden
         # Maps previous stochastic state and action to hidden representation
-        # before GRU processing
-        if self._discrete_dim:
-            img_input_dim = self._stoch_dim * self._discrete_dim + num_actions
-        else:
-            img_input_dim = self._stoch_dim + num_actions
+        # before GRU processing (only discrete stochastic states supported)
+        img_input_dim = self._stoch_dim * self._discrete_dim + num_actions
 
         img_input_layers = []
         img_input_layers.append(nn.Linear(img_input_dim, self._hidden_dim, bias=False))
@@ -148,26 +140,17 @@ class RSSM(nn.Module):
 
         # === Distribution Parameters Layers ===
         # Predict distribution parameters for prior and posterior
-        if self._discrete_dim:
-            # Categorical distribution (DreamerV3 uses this)
-            # Output logits for each class in each categorical distribution
-            self._img_dist_layer = nn.Linear(
-                self._hidden_dim, self._stoch_dim * self._discrete_dim
-            )
-            self._img_dist_layer.apply(tools.uniform_weight_init(1.0))
+        # Categorical distribution (DreamerV3 discrete representation)
+        # Output logits for each class in each categorical distribution
+        self._img_dist_layer = nn.Linear(
+            self._hidden_dim, self._stoch_dim * self._discrete_dim
+        )
+        self._img_dist_layer.apply(tools.uniform_weight_init(1.0))
 
-            self._obs_dist_layer = nn.Linear(
-                self._hidden_dim, self._stoch_dim * self._discrete_dim
-            )
-            self._obs_dist_layer.apply(tools.uniform_weight_init(1.0))
-        else:
-            # Gaussian distribution (for continuous stochastic states)
-            # Output mean and log_std
-            self._img_dist_layer = nn.Linear(self._hidden_dim, 2 * self._stoch_dim)
-            self._img_dist_layer.apply(tools.uniform_weight_init(1.0))
-
-            self._obs_dist_layer = nn.Linear(self._hidden_dim, 2 * self._stoch_dim)
-            self._obs_dist_layer.apply(tools.uniform_weight_init(1.0))
+        self._obs_dist_layer = nn.Linear(
+            self._hidden_dim, self._stoch_dim * self._discrete_dim
+        )
+        self._obs_dist_layer.apply(tools.uniform_weight_init(1.0))
 
         # === Learned Initial State ===
         # Learnable parameter for initial deterministic state
@@ -179,7 +162,7 @@ class RSSM(nn.Module):
 
     def initial(self, batch_size: int) -> Dict[str, torch.Tensor]:
         """
-        Create initial state for the RSSM
+        Create initial state for the RSSM (discrete stochastic states only)
 
         Args:
             batch_size: Number of parallel sequences
@@ -187,35 +170,24 @@ class RSSM(nn.Module):
         Returns:
             Dictionary containing initial state with keys:
             - 'deter': Deterministic state, shape (batch_size, deter_dim)
-            - 'stoch': Stochastic state, shape (batch_size, stoch_dim, discrete_dim) or (batch_size, stoch_dim)
-            - 'logit' (discrete): Logits, shape (batch_size, stoch_dim, discrete_dim)
-            - 'mean' (continuous): Mean, shape (batch_size, stoch_dim)
-            - 'std' (continuous): Std, shape (batch_size, stoch_dim)
+            - 'stoch': Stochastic state, shape (batch_size, stoch_dim, discrete_dim)
+            - 'logit': Logits, shape (batch_size, stoch_dim, discrete_dim)
         """
         # Initialize deterministic state
         deter = torch.zeros(batch_size, self._deter_dim, device=self._device)
 
-        if self._discrete_dim:
-            # Discrete (categorical) stochastic state
-            state = dict(
-                logit=torch.zeros(
-                    [batch_size, self._stoch_dim, self._discrete_dim],
-                    device=self._device
-                ),
-                stoch=torch.zeros(
-                    [batch_size, self._stoch_dim, self._discrete_dim],
-                    device=self._device
-                ),
-                deter=deter
-            )
-        else:
-            # Continuous (Gaussian) stochastic state
-            state = dict(
-                mean=torch.zeros([batch_size, self._stoch_dim], device=self._device),
-                std=torch.zeros([batch_size, self._stoch_dim], device=self._device),
-                stoch=torch.zeros([batch_size, self._stoch_dim], device=self._device),
-                deter=deter
-            )
+        # Discrete (categorical) stochastic state
+        state = dict(
+            logit=torch.zeros(
+                [batch_size, self._stoch_dim, self._discrete_dim],
+                device=self._device
+            ),
+            stoch=torch.zeros(
+                [batch_size, self._stoch_dim, self._discrete_dim],
+                device=self._device
+            ),
+            deter=deter
+        )
 
         # Apply learned initialization if specified
         if self._initial_state == "zeros":
@@ -331,7 +303,7 @@ class RSSM(nn.Module):
             )
         elif torch.sum(is_first) > 0:
             # Partial reset: reset only episodes that are starting
-            is_first = is_first[:, None]  # Add dimension for broadcasting
+            is_first = is_first[:, None].float()  # Add dimension and convert to float for broadcasting
             prev_action = prev_action * (1.0 - is_first)
 
             init_state = self.initial(batch_size)
@@ -467,14 +439,12 @@ class RSSM(nn.Module):
 
         Returns:
             Feature vector, shape (..., stoch_dim * discrete_dim + deter_dim)
-                          or (..., stoch_dim + deter_dim)
         """
         stoch = state["stoch"]
 
         # Flatten discrete stochastic state
-        if self._discrete_dim:
-            shape = list(stoch.shape[:-2]) + [self._stoch_dim * self._discrete_dim]
-            stoch = stoch.reshape(shape)
+        shape = list(stoch.shape[:-2]) + [self._stoch_dim * self._discrete_dim]
+        stoch = stoch.reshape(shape)
 
         # Concatenate stochastic and deterministic
         return torch.cat([stoch, state["deter"]], dim=-1)
@@ -485,7 +455,7 @@ class RSSM(nn.Module):
         dtype: Optional[torch.dtype] = None
     ) -> td.Distribution:
         """
-        Get probability distribution from state parameters
+        Get probability distribution from state parameters (discrete only)
 
         Args:
             state: State dictionary with distribution parameters
@@ -498,33 +468,22 @@ class RSSM(nn.Module):
 
     def _get_distribution(self, state: Dict[str, torch.Tensor]) -> td.Distribution:
         """
-        Create distribution from state parameters
+        Create distribution from state parameters (discrete only)
 
-        For discrete: Independent OneHotCategorical over all stoch_dim categoricals
-        For continuous: Independent Normal over all stoch_dim dimensions
+        Creates Independent OneHotCategorical over all stoch_dim categoricals
 
         Args:
-            state: Dictionary with 'logit' (discrete) or 'mean'/'std' (continuous)
+            state: Dictionary with 'logit' for discrete representation
 
         Returns:
             Distribution object
         """
-        if self._discrete_dim:
-            # Categorical distribution with uniform mixing for exploration
-            logit = state["logit"]
-            dist = td.independent.Independent(
-                tools.OneHotDist(logit, unimix_ratio=self._unimix_ratio),
-                reinterpreted_batch_ndims=1
-            )
-        else:
-            # Gaussian distribution
-            mean, std = state["mean"], state["std"]
-            dist = tools.ContDist(
-                td.independent.Independent(
-                    td.normal.Normal(mean, std),
-                    reinterpreted_batch_ndims=1
-                )
-            )
+        # Categorical distribution with uniform mixing for exploration
+        logit = state["logit"]
+        dist = td.independent.Independent(
+            tools.OneHotDist(logit, unimix_ratio=self._unimix_ratio),
+            reinterpreted_batch_ndims=1
+        )
         return dist
 
     def _compute_distribution_params(
@@ -533,62 +492,28 @@ class RSSM(nn.Module):
         hidden: torch.Tensor
     ) -> Dict[str, torch.Tensor]:
         """
-        Compute distribution parameters from hidden representation
+        Compute distribution parameters from hidden representation (discrete only)
 
         Args:
             name: "prior" or "posterior" to select the appropriate layer
             hidden: Hidden representation, shape (batch_size, hidden_dim)
 
         Returns:
-            Dictionary with 'logit' (discrete) or 'mean'/'std' (continuous)
+            Dictionary with 'logit' for categorical distribution
         """
-        if self._discrete_dim:
-            # Predict logits for categorical distribution
-            if name == "prior":
-                x = self._img_dist_layer(hidden)
-            elif name == "posterior":
-                x = self._obs_dist_layer(hidden)
-            else:
-                raise NotImplementedError(f"Unknown distribution name: {name}")
-
-            # Reshape to (batch_size, stoch_dim, discrete_dim)
-            logit = x.reshape(
-                list(x.shape[:-1]) + [self._stoch_dim, self._discrete_dim]
-            )
-            return {"logit": logit}
+        # Predict logits for categorical distribution
+        if name == "prior":
+            x = self._img_dist_layer(hidden)
+        elif name == "posterior":
+            x = self._obs_dist_layer(hidden)
         else:
-            # Predict mean and std for Gaussian distribution
-            if name == "prior":
-                x = self._img_dist_layer(hidden)
-            elif name == "posterior":
-                x = self._obs_dist_layer(hidden)
-            else:
-                raise NotImplementedError(f"Unknown distribution name: {name}")
+            raise NotImplementedError(f"Unknown distribution name: {name}")
 
-            # Split into mean and std
-            mean, std = torch.split(x, [self._stoch_dim, self._stoch_dim], dim=-1)
-
-            # Apply activations
-            if self._mean_activation == "none":
-                mean = mean
-            elif self._mean_activation == "tanh5":
-                mean = 5.0 * torch.tanh(mean / 5.0)
-            else:
-                raise NotImplementedError(self._mean_activation)
-
-            if self._std_activation == "softplus":
-                std = torch.softplus(std)
-            elif self._std_activation == "abs":
-                std = torch.abs(std + 1)
-            elif self._std_activation == "sigmoid":
-                std = torch.sigmoid(std)
-            elif self._std_activation == "sigmoid2":
-                std = 2 * torch.sigmoid(std / 2)
-            else:
-                raise NotImplementedError(self._std_activation)
-
-            std = std + self._min_std
-            return {"mean": mean, "std": std}
+        # Reshape to (batch_size, stoch_dim, discrete_dim)
+        logit = x.reshape(
+            list(x.shape[:-1]) + [self._stoch_dim, self._discrete_dim]
+        )
+        return {"logit": logit}
 
     def kl_loss(
         self,

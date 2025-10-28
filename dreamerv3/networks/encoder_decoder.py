@@ -621,7 +621,7 @@ class MLP(nn.Module):
         name: str = "NoName"
     ):
         """
-        Initialize MLP
+        Initialize MLP (simplified for discrete actions only)
 
         Args:
             inp_dim: Input dimension
@@ -630,16 +630,15 @@ class MLP(nn.Module):
             units: Hidden layer size
             act: Activation function name
             norm: Whether to use layer normalization
-            dist: Output distribution type:
-                  - 'normal': Gaussian (continuous actions)
+            dist: Output distribution type (only 'onehot', 'symlog_disc', 'binary', 'mse' supported):
                   - 'onehot': Categorical (discrete actions)
                   - 'symlog_disc': Discretized symlog (rewards, values)
                   - 'binary': Bernoulli (continuation)
                   - 'mse': Deterministic MSE
-            std: Standard deviation (for normal dist) - 'learned' or float
-            min_std: Minimum std for normal distribution
-            max_std: Maximum std for normal distribution
-            absmax: Absolute maximum for clamping outputs
+            std: Standard deviation (unused for discrete, kept for compatibility)
+            min_std: Minimum std (unused for discrete, kept for compatibility)
+            max_std: Maximum std (unused for discrete, kept for compatibility)
+            absmax: Absolute maximum for clamping outputs (unused for discrete)
             temp: Temperature for categorical sampling
             unimix_ratio: Uniform mixing ratio for exploration
             outscale: Output layer initialization scale
