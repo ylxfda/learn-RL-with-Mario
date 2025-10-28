@@ -25,6 +25,7 @@ python test_scripts/extract_episode.py logdir/mario-debug/train_eps/env0-1266.np
 
 # This creates: logdir/mario-debug/train_eps/env0-1266/
 # - image_1266.gif: Animated GIF of observations (1266 frames)
+# - images/: Individual frames as JPG files (0000.jpg, 0001.jpg, ..., 1265.jpg)
 # - reward.csv: Reward values per timestep
 # - action.csv: One-hot encoded actions per timestep
 # - discount.csv: Discount factors per timestep
@@ -35,7 +36,9 @@ python test_scripts/extract_episode.py logdir/mario-debug/train_eps/env0-1266.np
 
 ### Output Format
 
-- **Images**: Saved as animated GIF with frame count in filename (e.g., `image_1266.gif`)
+- **Images**:
+  - Animated GIF with frame count in filename (e.g., `image_1266.gif`)
+  - Individual frames saved as JPG in `images/` subfolder with zero-padded filenames (e.g., `0000.jpg`, `0001.jpg`, ..., `1265.jpg`)
 - **Other data**: Saved as CSV files with timestep index
   - 1D arrays: Single column (e.g., `reward`)
   - 2D arrays: Multiple columns (e.g., `action_0`, `action_1`, ...)

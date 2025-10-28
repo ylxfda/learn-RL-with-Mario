@@ -57,10 +57,13 @@ def extract_episode(npz_path: pathlib.Path, output_dir: pathlib.Path = None):
 
         # Handle image data (3D or 4D arrays with values in [0, 255])
         if key == 'image' and len(value.shape) >= 3:
-            # Image data: create GIF
+            # Image data: create GIF and save individual frames
             print(f"  Creating GIF animation...")
             num_frames = len(value)
             create_gif(value, output_dir / f"{key}_{num_frames}.gif")
+
+            print(f"  Saving individual frames as JPG...")
+            save_frames(value, output_dir / "images")
 
         else:
             # Other data: save as CSV
@@ -69,6 +72,43 @@ def extract_episode(npz_path: pathlib.Path, output_dir: pathlib.Path = None):
 
     print(f"\n✓ Extraction complete: {output_dir}/")
     return True
+
+
+def save_frames(images: np.ndarray, output_dir: pathlib.Path):
+    """
+    Save individual frames as JPG images
+
+    Args:
+        images: Image array, shape (T, H, W, C) or (T, H, W)
+        output_dir: Output directory for frames
+    """
+    # Create output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Normalize images to [0, 255] uint8
+    if images.dtype == np.float32 or images.dtype == np.float64:
+        # Assume normalized [0, 1]
+        images = (images * 255).astype(np.uint8)
+    else:
+        images = images.astype(np.uint8)
+
+    # Save each frame
+    num_frames = len(images)
+    num_digits = len(str(num_frames - 1))  # Number of digits needed
+
+    for i in range(num_frames):
+        img = images[i]
+
+        # Handle grayscale
+        if len(img.shape) == 2:
+            img = np.stack([img] * 3, axis=-1)
+
+        # Convert to PIL and save
+        pil_img = Image.fromarray(img)
+        filename = f"{i:0{num_digits}d}.jpg"
+        pil_img.save(output_dir / filename, quality=95)
+
+    print(f"    Saved {num_frames} frames to {output_dir.name}/")
 
 
 def create_gif(images: np.ndarray, output_path: pathlib.Path, duration: int = 100):
