@@ -280,7 +280,7 @@ def make_logger(logdir, step):
     Returns:
         Logger object
     """
-    return tools.Logger(logdir, step)
+    return Logger(logdir, step)
 
 
 class Logger:
