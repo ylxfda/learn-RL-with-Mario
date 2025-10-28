@@ -420,7 +420,7 @@ def make_dataset(episodes, config):
 def simulate(
     agent,
     env,
-    cache,
+    episodes_dict,
     logger,
     is_eval=False,
     episodes=0,
@@ -434,7 +434,7 @@ def simulate(
     Args:
         agent: Agent to execute
         env: Single environment instance
-        cache: Episode cache (replay buffer)
+        episodes_dict: OrderedDict of saved episodes (for replay buffer)
         logger: Logger
         is_eval: Whether this is evaluation (vs training)
         episodes: Number of episodes to run (0 = until steps reached)
@@ -450,15 +450,22 @@ def simulate(
     obs = None
     agent_state = None
 
+    # Current episode buffer (temporary storage for ongoing episode)
+    current_episode = None
+
     while (steps and step < steps) or (episodes and episode < episodes):
         # Reset environment if needed
         if done:
             obs = env.reset()
-            # Add initial transition to cache
+            # Initialize new episode buffer
+            current_episode = {}
+            # Add initial transition
             t = {k: tools.convert(v) for k, v in obs.items()}
             t["reward"] = 0.0
             t["discount"] = 1.0
-            tools.add_to_cache(cache, "env0", t)
+            # Initialize episode buffer
+            for key, val in t.items():
+                current_episode[key] = [val]
 
         # Add batch dimension for agent
         obs_batch = {
@@ -489,29 +496,41 @@ def simulate(
         length += 1
         step += 1
 
-        # Add transition to cache
+        # Add transition to current episode
         t = {k: tools.convert(v) for k, v in obs.items()}
         t.update(action_dict)  # Add action dict (with one-hot "action" and "logprob")
         t["reward"] = reward
         t["discount"] = info.get("discount", np.array(1 - float(done)))
-        tools.add_to_cache(cache, "env0", t)
+        # Append to current episode buffer
+        for key, val in t.items():
+            if key not in current_episode:
+                # Handle missing keys (e.g., action added after first transition)
+                current_episode[key] = [tools.convert(0 * val)] * (length)
+            current_episode[key].append(val)
 
         # Log completed episode
         if done:
-            # Save episode
-            tools.save_episodes(
-                pathlib.Path(logger._logdir) / ("eval_eps" if is_eval else "train_eps"),
-                {"env0": cache["env0"]}
-            )
+            # Convert lists to numpy arrays for saving
+            episode_data = {
+                k: np.array(v) for k, v in current_episode.items()
+            }
 
-            ep_length = len(cache["env0"]["reward"]) - 1
-            ep_return = float(np.array(cache["env0"]["reward"]).sum())
+            # Generate unique episode ID
+            import time
+            episode_id = f"{int(time.time() * 1000)}-{episode}"
 
-            # Log episode metrics
-            for key in list(cache["env0"].keys()):
+            # Save episode to disk
+            save_dir = pathlib.Path(logger._logdir) / ("eval_eps" if is_eval else "train_eps")
+            tools.save_episodes(save_dir, {episode_id: episode_data})
+
+            # Calculate episode metrics
+            ep_length = len(current_episode["reward"]) - 1
+            ep_return = float(np.array(current_episode["reward"]).sum())
+
+            # Log episode-specific metrics
+            for key in list(current_episode.keys()):
                 if "log_" in key:
-                    logger.scalar(key, float(np.array(cache["env0"][key]).sum()))
-                    cache["env0"].pop(key)
+                    logger.scalar(key, float(np.array(current_episode[key]).sum()))
 
             if not is_eval:
                 # Training metrics
@@ -519,20 +538,19 @@ def simulate(
                 logger.scalar("train_length", ep_length)
                 logger.scalar("train_episodes", 1)
                 logger.write()
+
+                # Add to episodes_dict for replay buffer
+                episodes_dict[episode_id] = episode_data
+
+                # Erase old episodes to maintain dataset size limit
+                tools.erase_over_episodes(episodes_dict, config.dataset_size)
             else:
                 # Evaluation metrics
                 logger.scalar("eval_return", ep_return)
                 logger.scalar("eval_length", ep_length)
 
-            # Clear the cache for this episode to avoid accumulation
-            # IMPORTANT: Each NPZ file should contain only ONE episode
-            cache["env0"] = {}
-
-            # Erase old episodes from cache to save memory
-            if not is_eval:
-                tools.erase_over_episodes(cache, config.dataset_size)
-
-            # Reset length counter
+            # Reset for next episode
+            current_episode = None
             length = 0
 
 
