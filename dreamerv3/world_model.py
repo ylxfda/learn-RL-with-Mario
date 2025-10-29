@@ -212,8 +212,20 @@ class WorldModel(nn.Module):
                 # === 2. Compute dynamics (posterior and prior) ===
                 # Posterior: z_t ~ q(z_t | h_t, e_t) using observations
                 # Prior: z_t ~ p(z_t | h_t) for imagination
+
+                # NEW FORMAT: data["action"][t] is action taken AT obs[t]
+                # But RSSM needs prev_action[t] (action that led TO obs[t])
+                # So we shift action right by 1, filling first position with zeros
+                batch_size, seq_len = embed.shape[:2]
+                zero_action = torch.zeros(
+                    (batch_size, 1, data["action"].shape[-1]),
+                    device=data["action"].device,
+                    dtype=data["action"].dtype
+                )
+                prev_action = torch.cat([zero_action, data["action"][:, :-1]], dim=1)
+
                 posterior, prior = self.dynamics.observe(
-                    embed, data["action"], data["is_first"]
+                    embed, prev_action, data["is_first"]
                 )
 
                 # === 3. Compute KL divergence loss ===
@@ -365,9 +377,20 @@ class WorldModel(nn.Module):
 
         # Use first 6 trajectories, observe first 5 steps
         # Compute posterior states for conditioning
+
+        # NEW FORMAT: Shift action right for observe()
+        batch_size_viz = 6
+        seq_len_viz = 5
+        zero_action_viz = torch.zeros(
+            (batch_size_viz, 1, data["action"].shape[-1]),
+            device=data["action"].device,
+            dtype=data["action"].dtype
+        )
+        prev_action_viz = torch.cat([zero_action_viz, data["action"][:6, :4]], dim=1)
+
         states, _ = self.dynamics.observe(
             embed[:6, :5],
-            data["action"][:6, :5],
+            prev_action_viz,
             data["is_first"][:6, :5]
         )
 
@@ -385,8 +408,11 @@ class WorldModel(nn.Module):
         init = {k: v[:, -1] for k, v in states.items()}
 
         # Imagine future without observations (open-loop prediction)
+        # NEW FORMAT: From states[4] (at obs[4]), imagine obs[5:T-1]
+        # Need actions: action[4] (obs[4]->obs[5]), action[5] (obs[5]->obs[6]), ..., action[T-2]
+        # So use action[4:-1] to match the desired output length
         prior = self.dynamics.imagine_with_action(
-            data["action"][:6, 5:],
+            data["action"][:6, 4:-1],
             init
         )
 
