@@ -270,20 +270,6 @@ class DreamerAgent:
                 self._metrics[name].append(value)
 
 
-def make_logger(logdir, step):
-    """
-    Create logger for metrics and videos
-
-    Args:
-        logdir: Directory for logs
-        step: Initial step count
-
-    Returns:
-        Logger object
-    """
-    return Logger(logdir, step)
-
-
 class Logger:
     """
     Logger for Scalar Metrics and Videos
@@ -513,17 +499,17 @@ def simulate(
                 k: np.array(v) for k, v in current_episode.items()
             }
 
-            # Generate unique episode ID
+            # Calculate episode metrics first
+            # In new format, each element is a complete transition, so length is direct count
+            ep_length = len(current_episode["reward"])
+
+            # Generate unique episode ID with length
             import time
-            episode_id = f"{int(time.time() * 1000)}-{episode}"
+            episode_id = f"{int(time.time() * 1000)}-{episode}-len{ep_length}"
 
             # Save episode to disk
             save_dir = pathlib.Path(logger._logdir) / ("eval_eps" if is_eval else "train_eps")
             tools.save_episodes(save_dir, {episode_id: episode_data})
-
-            # Calculate episode metrics
-            # In new format, each element is a complete transition, so length is direct count
-            ep_length = len(current_episode["reward"])
             ep_return = float(np.array(current_episode["reward"]).sum())
 
             # Log episode-specific metrics
@@ -535,7 +521,7 @@ def simulate(
                 # Training metrics
                 logger.scalar("train_return", ep_return)
                 logger.scalar("train_length", ep_length)
-                logger.scalar("train_episodes", 1)
+                # logger.scalar("train_episodes", 1)
                 logger.write()
 
                 # Add to episodes_dict for replay buffer
@@ -584,7 +570,7 @@ def main(config):
 
     # Count existing steps
     step = count_steps(logdir / "train_eps")
-    logger = make_logger(logdir, config.action_repeat * step)
+    logger = Logger(logdir, config.action_repeat * step)
 
     print("Create environment")
 
