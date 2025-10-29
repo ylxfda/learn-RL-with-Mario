@@ -15,6 +15,7 @@ Section 2.2 "Actor-Critic Learning"
 import copy
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Dict, Tuple, Callable, Any
 
 import sys
@@ -453,15 +454,25 @@ class ActorCritic(nn.Module):
         elif self._config.imag_gradient == "reinforce":
             # REINFORCE estimator
             # log π(a|s) * (return - baseline)
+            # Convert imag_action to strict one-hot (remove straight-through gradients)
+            imag_action_onehot = F.one_hot(
+                torch.argmax(imag_action, dim=-1),
+                imag_action.shape[-1]
+            ).float()
             actor_target = (
-                policy.log_prob(imag_action)[:-1][:, :, None] *
+                policy.log_prob(imag_action_onehot)[:-1][:, :, None] *
                 (target - self.value(imag_feat[:-1]).mode()).detach()
             )
 
         elif self._config.imag_gradient == "both":
             # Interpolation between dynamics and REINFORCE
+            # Convert imag_action to strict one-hot (remove straight-through gradients)
+            imag_action_onehot = F.one_hot(
+                torch.argmax(imag_action, dim=-1),
+                imag_action.shape[-1]
+            ).float()
             actor_target = (
-                policy.log_prob(imag_action)[:-1][:, :, None] *
+                policy.log_prob(imag_action_onehot)[:-1][:, :, None] *
                 (target - self.value(imag_feat[:-1]).mode()).detach()
             )
             mix = self._config.imag_gradient_mix

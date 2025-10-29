@@ -128,6 +128,31 @@ class OneHotDist(td.one_hot_categorical.OneHotCategorical):
 
         return sample
 
+    def log_prob(self, value: torch.Tensor) -> torch.Tensor:
+        """
+        Compute log probability with automatic one-hot conversion
+
+        This overrides the parent's log_prob to handle straight-through gradients.
+        Automatically converts non-strict one-hot vectors to strict one-hot.
+
+        Args:
+            value: Action tensor (may have straight-through gradients)
+
+        Returns:
+            Log probabilities, shape value.shape[:-1]
+        """
+        # Convert to strict one-hot if needed
+        # Check if value has gradients or is not strictly binary
+        if value.requires_grad or torch.any((value != 0) & (value != 1)):
+            # Has gradients or not strictly binary - convert to one-hot
+            value = F.one_hot(
+                torch.argmax(value, dim=-1),
+                value.shape[-1]
+            ).float()
+
+        # Call parent's log_prob (will now pass validation)
+        return super().log_prob(value)
+
 
 class DiscDist:
     """

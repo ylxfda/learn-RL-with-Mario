@@ -216,6 +216,7 @@ class DreamerAgent:
             action = actor.sample()
 
         # Compute log probability (for off-policy learning)
+        # OneHotDist.log_prob will automatically handle straight-through gradients
         logprob = actor.log_prob(action)
 
         # Detach for next step
@@ -549,6 +550,11 @@ def simulate(
                 logger.scalar("eval_return", ep_return)
                 logger.scalar("eval_length", ep_length)
 
+                # Add to episodes_dict for video prediction
+                # Keep only the most recent eval episode
+                episodes_dict.clear()
+                episodes_dict[episode_id] = episode_data
+
             # Reset for next episode
             current_episode = None
             length = 0
@@ -659,7 +665,7 @@ def main(config):
             eval_env.close()
 
             # Log video prediction
-            if config.video_pred_log:
+            if config.video_pred_log and len(eval_eps) > 0:
                 video_pred = agent._world_model.video_pred(next(eval_dataset))
                 logger.video("eval_openl", tools.to_np(video_pred))
 
