@@ -91,12 +91,21 @@ class OneHotDist(td.one_hot_categorical.OneHotCategorical):
         Returns:
             One-hot tensor with gradients from softmax, shape (..., num_classes)
         """
-        # Create one-hot encoding of argmax
+        # === Straight-Through Estimator ===
+        # Create one-hot encoding of argmax (discrete, non-differentiable)
+        # We use argmax to get the most likely class
         _mode = F.one_hot(
             torch.argmax(super().logits, dim=-1),
             super().logits.shape[-1]
         )
-        # Straight-through: forward uses one-hot, backward uses softmax
+
+        # Straight-through trick: _mode.detach() + logits - logits.detach()
+        # Forward pass:  returns discrete one-hot mode (argmax result)
+        # Backward pass: gradients flow through continuous logits directly
+        #
+        # Math: Let f = _mode.detach() + logits - logits.detach()
+        #   Forward:  f = _mode + logits - logits = _mode (discrete one-hot)
+        #   Backward: ∂f/∂logits = 0 + 1 - 0 = 1 (gradients flow through logits)
         return _mode.detach() + super().logits - super().logits.detach()
 
     def sample(
@@ -117,10 +126,22 @@ class OneHotDist(td.one_hot_categorical.OneHotCategorical):
         if seed is not None:
             raise ValueError("Seeding not implemented")
 
-        # Sample using standard categorical sampling
+        # === Straight-Through Estimator ===
+        # Sample using standard categorical sampling (discrete, non-differentiable)
+        # We detach() because sampling is a discrete operation with no gradient
         sample = super().sample(sample_shape).detach()
 
-        # Add straight-through gradient from probabilities
+        # Straight-through trick: sample + probs - probs.detach()
+        # Forward pass:  returns discrete one-hot sample
+        # Backward pass: gradients flow through continuous probs (via softmax)
+        #
+        # This allows us to:
+        # - Use discrete samples in forward pass (preserving discrete nature)
+        # - Get continuous gradients in backward pass (enabling learning)
+        #
+        # Math: Let f = sample + probs - probs.detach()
+        #   Forward:  f = sample + probs - probs = sample (discrete)
+        #   Backward: ∂f/∂logits = 0 + ∂probs/∂logits - 0 = ∂softmax/∂logits (continuous)
         probs = super().probs
         while len(probs.shape) < len(sample.shape):
             probs = probs[None]

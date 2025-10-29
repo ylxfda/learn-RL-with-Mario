@@ -193,7 +193,7 @@ class DreamerAgent:
         embed = self._world_model.encoder(obs)
 
         # Update latent state with observation
-        # This computes the posterior: p(z_t | h_t, o_t)
+        # This computes the posterior: q(z_t | h_t, o_t)
         latent, _ = self._world_model.dynamics.obs_step(
             latent, action, embed, obs["is_first"]
         )
