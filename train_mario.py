@@ -198,10 +198,6 @@ class DreamerAgent:
             latent, action, embed, obs["is_first"]
         )
 
-        # Use mean for deterministic evaluation
-        if self._config.eval_state_mean and not training:
-            latent["stoch"] = latent["mean"]
-
         # Extract features for policy
         feat = self._world_model.dynamics.get_latent_state_feature(latent)
 

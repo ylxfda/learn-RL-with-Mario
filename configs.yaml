@@ -152,7 +152,6 @@ defaults:
   imag_horizon: 15           # Imagination horizon (planning steps)
   imag_gradient: 'reinforce' # Gradient estimator: 'dynamics' or 'reinforce'
   imag_gradient_mix: 0.0     # Mix ratio if using 'both'
-  eval_state_mean: False     # Use mean instead of sample during eval
 
   # === Exploration (not used for Mario) ===
   expl_behavior: 'greedy'    # Exploration strategy: 'greedy', 'random'
