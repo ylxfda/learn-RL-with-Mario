@@ -427,12 +427,14 @@ class RSSM(nn.Module):
         prior = {k: swap(v) for k, v in prior.items()}
         return prior
 
-    def get_feat(self, state: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def get_latent_state_feature(self, state: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
-        Extract feature vector from state for downstream prediction
+        Extract latent state feature vector for downstream prediction
 
         Concatenates stochastic and deterministic components into a single
         feature vector used by reward, value, and decoder networks.
+
+        Math: [z, h] where z is stoch and h is deter
 
         Args:
             state: State dictionary with 'stoch' and 'deter'

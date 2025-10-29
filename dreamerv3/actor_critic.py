@@ -301,7 +301,7 @@ class ActorCritic(nn.Module):
             state, _, _ = prev
 
             # Extract features from state
-            feat = dynamics.get_feat(state)
+            feat = dynamics.get_latent_state_feature(state)
 
             # Detach to stop gradients through previous timesteps
             # (for computational efficiency)
@@ -361,7 +361,7 @@ class ActorCritic(nn.Module):
         """
         # Predict continuation probability (1 - terminal)
         if "cont" in self._world_model.heads:
-            inp = self._world_model.dynamics.get_feat(imag_state)
+            inp = self._world_model.dynamics.get_latent_state_feature(imag_state)
             # Shape: (horizon+1, batch, 1)
             discount = self._config.discount * self._world_model.heads["cont"](inp).mean
         else:

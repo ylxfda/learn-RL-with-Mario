@@ -247,7 +247,7 @@ class WorldModel(nn.Module):
                     # Get features from posterior
                     # Some heads train with gradients, others don't
                     grad_head = name in self._config.grad_heads
-                    feat = self.dynamics.get_feat(posterior)
+                    feat = self.dynamics.get_latent_state_feature(posterior)
                     feat = feat if grad_head else feat.detach()
 
                     # Predict
@@ -304,7 +304,7 @@ class WorldModel(nn.Module):
             # Context for exploration (if used)
             context = dict(
                 embed=embed,
-                feat=self.dynamics.get_feat(posterior),
+                feat=self.dynamics.get_latent_state_feature(posterior),
                 kl=kl_value,
                 postent=self.dynamics.get_dist(posterior).entropy()
             )
@@ -396,12 +396,12 @@ class WorldModel(nn.Module):
 
         # Reconstruct from posterior (with observations)
         recon = self.heads["decoder"](
-            self.dynamics.get_feat(states)
+            self.dynamics.get_latent_state_feature(states)
         )["image"].mode()[:6]
 
         # Predict rewards from posterior
         reward_post = self.heads["reward"](
-            self.dynamics.get_feat(states)
+            self.dynamics.get_latent_state_feature(states)
         ).mode()[:6]
 
         # Initialize imagination from last posterior state
@@ -418,12 +418,12 @@ class WorldModel(nn.Module):
 
         # Decode imagined states
         openl = self.heads["decoder"](
-            self.dynamics.get_feat(prior)
+            self.dynamics.get_latent_state_feature(prior)
         )["image"].mode()
 
         # Predict rewards from imagination
         reward_prior = self.heads["reward"](
-            self.dynamics.get_feat(prior)
+            self.dynamics.get_latent_state_feature(prior)
         ).mode()
 
         # Combine posterior reconstruction and prior imagination

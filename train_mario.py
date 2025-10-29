@@ -203,7 +203,7 @@ class DreamerAgent:
             latent["stoch"] = latent["mean"]
 
         # Extract features for policy
-        feat = self._world_model.dynamics.get_feat(latent)
+        feat = self._world_model.dynamics.get_latent_state_feature(latent)
 
         # Select action
         if not training:
@@ -253,7 +253,7 @@ class DreamerAgent:
 
         # Reward function for actor-critic (from world model)
         reward = lambda f, s, a: self._world_model.heads["reward"](
-            self._world_model.dynamics.get_feat(s)
+            self._world_model.dynamics.get_latent_state_feature(s)
         ).mode()
 
         # === 2. Train Actor-Critic ===
