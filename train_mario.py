@@ -527,8 +527,8 @@ def simulate(
                 # Add to episodes_dict for replay buffer
                 episodes_dict[episode_id] = episode_data
 
-                # Erase old episodes to maintain dataset size limit
-                tools.erase_over_episodes(episodes_dict, config.dataset_size)
+                # Erase old episodes to maintain dataset size limit (from memory and disk)
+                tools.erase_over_episodes(episodes_dict, config.dataset_size, save_dir)
             else:
                 # Evaluation metrics
                 logger.scalar("eval_return", ep_return)

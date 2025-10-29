@@ -883,13 +883,14 @@ def load_episodes(
     return episodes
 
 
-def erase_over_episodes(cache: dict, dataset_size: int) -> int:
+def erase_over_episodes(cache: dict, dataset_size: int, directory: pathlib.Path = None) -> int:
     """
     Remove oldest episodes to stay under size limit
 
     Args:
         cache: Episode cache
         dataset_size: Maximum dataset size in steps
+        directory: Directory where episodes are stored (if provided, will delete files from disk)
 
     Returns:
         Current dataset size
@@ -904,8 +905,16 @@ def erase_over_episodes(cache: dict, dataset_size: int) -> int:
         ):
             step_in_dataset += len(ep["reward"]) - 1
         else:
-            # Remove oldest episode
+            # Remove oldest episode from memory
             del cache[key]
+
+            # Also remove from disk if directory is provided
+            if directory:
+                episode_length = len(ep["reward"])
+                filename = directory / f"{key}-{episode_length}.npz"
+                if filename.exists():
+                    filename.unlink()
+                    print(f"Deleted old episode from disk: {filename.name}")
 
     return step_in_dataset
 
