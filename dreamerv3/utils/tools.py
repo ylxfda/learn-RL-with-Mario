@@ -324,7 +324,7 @@ def lambda_return(
         bootstrap = torch.zeros_like(value[-1])
 
     # Compute TD targets: r_t + γV(s_{t+1})
-    next_values = torch.cat([value[1:], bootstrap[None]], dim=0)
+    next_values = torch.cat([value[1:], bootstrap.unsqueeze(0)], dim=0)
     inputs = reward + pcont * next_values * (1 - lambda_)
 
     # Recursively compute λ-returns backwards

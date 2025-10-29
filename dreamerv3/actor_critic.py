@@ -326,7 +326,7 @@ class ActorCritic(nn.Module):
         # Prepend initial state to state sequence
         # states: (horizon+1, batch, ...)
         states = {
-            k: torch.cat([start[k][None], v[:-1]], dim=0)
+            k: torch.cat([start[k].unsqueeze(0), v[:-1]], dim=0)
             for k, v in succ.items()
         }
 

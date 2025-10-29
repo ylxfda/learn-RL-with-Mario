@@ -144,7 +144,7 @@ class OneHotDist(td.one_hot_categorical.OneHotCategorical):
         #   Backward: ∂f/∂logits = 0 + ∂probs/∂logits - 0 = ∂softmax/∂logits (continuous)
         probs = super().probs
         while len(probs.shape) < len(sample.shape):
-            probs = probs[None]
+            probs = probs.unsqueeze(0)  # Add dimension at the front
         sample = sample + probs - probs.detach()
 
         return sample
