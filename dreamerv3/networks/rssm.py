@@ -94,10 +94,10 @@ class RSSM(nn.Module):
         # Get activation function
         activation_fn = getattr(torch.nn, activation)
 
-        # === Imagination Network ===
-        # Input: [stoch_{t-1}, action_{t-1}] -> Hidden
+        # === Recurrent Input Network ===
+        # [z_{t-1}, a_{t-1}] -> hidden
         # Maps previous stochastic state and action to hidden representation
-        # before GRU processing (only discrete stochastic states supported)
+        # before GRU processing: h_t = GRU(h_{t-1}, hidden)
         img_input_dim = self._stoch_dim * self._discrete_dim + num_actions
 
         img_input_layers = []
@@ -105,8 +105,8 @@ class RSSM(nn.Module):
         if use_layer_norm:
             img_input_layers.append(nn.LayerNorm(self._hidden_dim, eps=1e-03))
         img_input_layers.append(activation_fn())
-        self._img_input_net = nn.Sequential(*img_input_layers)
-        self._img_input_net.apply(tools.weight_init)
+        self._recurrent_input_net = nn.Sequential(*img_input_layers)
+        self._recurrent_input_net.apply(tools.weight_init)
 
         # === GRU Cell ===
         # Processes hidden representation to update deterministic state
@@ -114,19 +114,19 @@ class RSSM(nn.Module):
         self._gru_cell = GRUCell(self._hidden_dim, self._deter_dim, norm=use_layer_norm)
         self._gru_cell.apply(tools.weight_init)
 
-        # === Imagination Output Network ===
-        # Deter -> Hidden (for computing prior)
+        # === Prior Network ===
+        # h_t -> p(z_t | h_t)
         # Projects deterministic state to hidden representation for prior prediction
         img_output_layers = []
         img_output_layers.append(nn.Linear(self._deter_dim, self._hidden_dim, bias=False))
         if use_layer_norm:
             img_output_layers.append(nn.LayerNorm(self._hidden_dim, eps=1e-03))
         img_output_layers.append(activation_fn())
-        self._img_output_net = nn.Sequential(*img_output_layers)
-        self._img_output_net.apply(tools.weight_init)
+        self._prior_net = nn.Sequential(*img_output_layers)
+        self._prior_net.apply(tools.weight_init)
 
-        # === Observation Network ===
-        # Input: [deter_t, embed_t] -> Hidden (for computing posterior)
+        # === Posterior Network ===
+        # [h_t, o_t] -> q(z_t | h_t, o_t)
         # Combines deterministic state with observation embedding
         # to compute posterior distribution
         obs_output_layers = []
@@ -135,8 +135,8 @@ class RSSM(nn.Module):
         if use_layer_norm:
             obs_output_layers.append(nn.LayerNorm(self._hidden_dim, eps=1e-03))
         obs_output_layers.append(activation_fn())
-        self._obs_output_net = nn.Sequential(*obs_output_layers)
-        self._obs_output_net.apply(tools.weight_init)
+        self._posterior_net = nn.Sequential(*obs_output_layers)
+        self._posterior_net.apply(tools.weight_init)
 
         # === Distribution Parameters Layers ===
         # Predict distribution parameters for prior and posterior
@@ -211,7 +211,7 @@ class RSSM(nn.Module):
         Returns:
             stoch: Sampled stochastic state
         """
-        hidden = self._img_output_net(deter)
+        hidden = self._prior_net(deter)
         stats = self._compute_distribution_params("prior", hidden)
         dist = self._get_distribution(stats)
         return dist.mode()
@@ -324,7 +324,7 @@ class RSSM(nn.Module):
         # Compute posterior: incorporate observation
         # Concatenate deterministic state with observation embedding
         x = torch.cat([prior["deter"], embed], dim=-1)
-        x = self._obs_output_net(x)  # (batch_size, hidden_dim)
+        x = self._posterior_net(x)  # (batch_size, hidden_dim)
 
         # Compute posterior distribution parameters
         stats = self._compute_distribution_params("posterior", x)
@@ -374,7 +374,7 @@ class RSSM(nn.Module):
         x = torch.cat([prev_stoch, prev_action], dim=-1)
 
         # Process through input network
-        x = self._img_input_net(x)  # (batch_size, hidden_dim)
+        x = self._recurrent_input_net(x)  # (batch_size, hidden_dim)
 
         # Update deterministic state with GRU
         # Note: rec_depth > 1 not correctly implemented in original, so we use 1
@@ -384,7 +384,7 @@ class RSSM(nn.Module):
             deter = deter[0]  # Unwrap from list
 
         # Compute prior distribution
-        x = self._img_output_net(deter)  # (batch_size, hidden_dim)
+        x = self._prior_net(deter)  # (batch_size, hidden_dim)
         stats = self._compute_distribution_params("prior", x)
 
         # Sample stochastic state
