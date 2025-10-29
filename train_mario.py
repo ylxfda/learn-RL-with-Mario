@@ -503,9 +503,9 @@ def simulate(
             # In new format, each element is a complete transition, so length is direct count
             ep_length = len(current_episode["reward"])
 
-            # Generate unique episode ID with length
+            # Generate unique episode ID (length will be added by save_episodes)
             import time
-            episode_id = f"{int(time.time() * 1000)}-{episode}-len{ep_length}"
+            episode_id = f"{int(time.time() * 1000)}-{episode}"
 
             # Save episode to disk
             save_dir = pathlib.Path(logger._logdir) / ("eval_eps" if is_eval else "train_eps")
@@ -634,7 +634,7 @@ def main(config):
 
     # Main training loop
     while agent._step < config.steps:
-        # Evaluate
+        # Evaluate (current model for eval_episode_num episodes)
         if config.eval_episode_num > 0:
             print("Evaluation")
             eval_env = make_mario_env(config)

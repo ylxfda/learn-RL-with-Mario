@@ -169,8 +169,8 @@ class RSSM(nn.Module):
 
         Returns:
             Dictionary containing initial state with keys:
-            - 'deter': Deterministic state, shape (batch_size, deter_dim)
-            - 'stoch': Stochastic state, shape (batch_size, stoch_dim, discrete_dim)
+            - 'deter': Deterministic state h, shape (batch_size, deter_dim)
+            - 'stoch': Stochastic state z, shape (batch_size, stoch_dim, discrete_dim)
             - 'logit': Logits, shape (batch_size, stoch_dim, discrete_dim)
         """
         # Initialize deterministic state
@@ -193,9 +193,9 @@ class RSSM(nn.Module):
         if self._initial_state == "zeros":
             return state
         elif self._initial_state == "learned":
-            # Use learned initial deterministic state
+            # Use learned initial deterministic state h (take tanh to bound values and match GRU)
             state["deter"] = torch.tanh(self.W_initial).repeat(batch_size, 1)
-            # Sample initial stochastic state from prior given initial deter
+            # Sample initial stochastic state from prior given initial deter p(z_t | h_t)
             state["stoch"] = self._get_initial_stoch(state["deter"])
             return state
         else:
