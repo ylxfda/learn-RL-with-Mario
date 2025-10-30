@@ -13,6 +13,7 @@ Based on gym_super_mario_bros environment.
 
 import gym
 import numpy as np
+import time
 from typing import Tuple, Dict, Optional
 
 import gym_super_mario_bros
@@ -49,7 +50,9 @@ class MarioEnv:
         reward_scale: float = 1.0,
         time_penalty: float = -0.1,
         death_penalty: float = -15.0,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        render_mode: Optional[str] = None,
+        frame_delay: float = 0.0
     ):
         """
         Initialize Mario environment
@@ -66,6 +69,8 @@ class MarioEnv:
             time_penalty: Penalty per unit time elapsed
             death_penalty: Penalty for losing a life
             seed: Random seed for reproducibility
+            render_mode: Rendering mode ("human" to show game window, None for headless)
+            frame_delay: Delay in seconds between rendered frames (0.0 = no delay, 0.05 = ~20 FPS)
         """
         assert size[0] == size[1], "Mario observations must be square"
         assert resize_method in ("opencv", "pillow"), resize_method
@@ -79,6 +84,8 @@ class MarioEnv:
         self._reward_scale = reward_scale
         self._time_penalty = time_penalty
         self._death_penalty = death_penalty
+        self._render_mode = render_mode
+        self._frame_delay = frame_delay
         self._random = np.random.RandomState(seed)
         self._seed = seed
         self._base_seed = seed if seed is not None else self._random.randint(0, 2**31)
@@ -180,6 +187,12 @@ class MarioEnv:
         for repeat_idx in range(self._repeat):
             obs, _, done, step_info = self._env.step(action)
 
+            # Render if needed
+            if self._render_mode == 'human':
+                self._env.render()
+                if self._frame_delay > 0:
+                    time.sleep(self._frame_delay)
+
             # === Reward Shaping: Progress-Based ===
             # Reward = change in x-position (encourage moving right)
             x_pos = float(step_info.get("x_pos", self._prev_x_pos))
@@ -268,6 +281,10 @@ class MarioEnv:
         self._prev_x_pos = float(getattr(self._env.unwrapped, "_x_position", 0.0))
         self._prev_time = 400
         self._prev_lives = 2
+
+        # Render initial state if needed
+        if self._render_mode == 'human':
+            self._env.render()
 
         # Create initial observation (is_first=True)
         transition = self._create_observation(0.0, is_first=True)
@@ -411,5 +428,7 @@ def make_mario_env(config: any) -> MarioEnv:
         reward_scale=getattr(config, "mario_reward_scale", 1.0),
         time_penalty=getattr(config, "mario_time_penalty", -0.1),
         death_penalty=getattr(config, "mario_death_penalty", -15.0),
-        seed=config.seed
+        seed=config.seed,
+        render_mode=getattr(config, "render_mode", None),
+        frame_delay=getattr(config, "frame_delay", 0.0)
     )

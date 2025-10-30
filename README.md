@@ -246,6 +246,44 @@ Metrics logged:
 - `kl`: KL divergence
 - Videos: Ground truth vs predictions
 
+### Playing/Demo
+
+Play Mario with a trained agent and watch it in real-time:
+
+```bash
+# Basic usage (recommended for best demo performance)
+python play_mario.py --logdir logdir/mario --episodes 5
+```
+
+**Default behavior:**
+- Uses **mode** for latent state z (deterministic world model predictions)
+- Uses **mode** for actions (deterministic policy)
+- Displays game window with real-time rendering
+- Shows detailed statistics
+
+**Advanced options:**
+
+```bash
+# Use stochastic sampling (training behavior)
+python play_mario.py --logdir logdir/mario --z-sample --action-sample
+
+# Only use sample for z, keep action deterministic
+python play_mario.py --logdir logdir/mario --z-sample
+
+# Headless mode (no rendering, for servers)
+python play_mario.py --logdir logdir/mario --no-render
+
+# Quiet mode (reduce output)
+python play_mario.py --logdir logdir/mario --quiet
+
+# Play 10 episodes
+python play_mario.py --logdir logdir/mario --episodes 10
+```
+
+**Understanding z and action strategies:**
+- **mode (default)**: Deterministic, selects highest probability option. Best for consistent demo performance.
+- **sample**: Stochastic, samples from probability distribution. Shows training-time behavior with more exploration.
+
 ### Configuration
 
 Edit `configs.yaml` to modify hyperparameters:
