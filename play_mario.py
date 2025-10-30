@@ -278,7 +278,7 @@ def main():
     parser.add_argument(
         '--frame-delay',
         type=float,
-        default=0.02,
+        default=0.015,
         help='Delay between frames in seconds (default: 0.02 = ~50 FPS)'
     )
 

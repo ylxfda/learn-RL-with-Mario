@@ -556,6 +556,15 @@ def main(config):
     (logdir / "train_eps").mkdir(exist_ok=True)
     (logdir / "eval_eps").mkdir(exist_ok=True)
 
+    # Save config for later use (e.g., play_mario.py)
+    config_save_path = logdir / "config.yaml"
+    if not config_save_path.exists():
+        import yaml
+        config_dict = {k: v for k, v in vars(config).items() if not k.startswith('_')}
+        with open(config_save_path, 'w') as f:
+            yaml.dump(config_dict, f, default_flow_style=False)
+        print(f"Saved config to {config_save_path}")
+
     # Adjust config for action repeat
     config.steps //= config.action_repeat
     config.eval_every //= config.action_repeat
