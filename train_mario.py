@@ -424,7 +424,7 @@ def simulate(
         steps: Number of steps to run (0 = until episodes reached)
 
     Returns:
-        None
+        List of episode returns (for evaluation) or None (for training)
     """
     # Initialize
     step = episode = 0
@@ -435,6 +435,9 @@ def simulate(
 
     # Current episode buffer (temporary storage for ongoing episode)
     current_episode = None
+
+    # Track episode returns for evaluation
+    episode_returns = [] if is_eval else None
 
     while (steps and step < steps) or (episodes and episode < episodes):
         # Reset environment if needed
@@ -530,6 +533,9 @@ def simulate(
                 logger.scalar("eval_return", ep_return)
                 logger.scalar("eval_length", ep_length)
 
+                # Track returns for best checkpoint saving
+                episode_returns.append(ep_return)
+
                 # Add to episodes_dict for video prediction
                 # Keep only the most recent eval episode
                 episodes_dict.clear()
@@ -537,7 +543,9 @@ def simulate(
 
             # Reset for next episode
             current_episode = None
-            length = 0
+
+    # Return episode returns for evaluation
+    return episode_returns
 
 
 def main(config):
@@ -555,15 +563,6 @@ def main(config):
     logdir.mkdir(parents=True, exist_ok=True)
     (logdir / "train_eps").mkdir(exist_ok=True)
     (logdir / "eval_eps").mkdir(exist_ok=True)
-
-    # Save config for later use (e.g., play_mario.py)
-    config_save_path = logdir / "config.yaml"
-    if not config_save_path.exists():
-        import yaml
-        config_dict = {k: v for k, v in vars(config).items() if not k.startswith('_')}
-        with open(config_save_path, 'w') as f:
-            yaml.dump(config_dict, f, default_flow_style=False)
-        print(f"Saved config to {config_save_path}")
 
     # Adjust config for action repeat
     config.steps //= config.action_repeat
@@ -586,6 +585,9 @@ def main(config):
     config.num_actions = act_space.n
 
     print("Action space:", act_space, f"({config.num_actions} actions)")
+
+    # Save config for later use (e.g., play_mario.py)
+    tools.save_config(config, logdir)
 
     # Load replay buffer
     print("Load replay buffer")
@@ -637,13 +639,17 @@ def main(config):
 
     print("Start training")
 
+    # Track best evaluation performance for checkpoint saving
+    best_eval_return = float('-inf')
+
     # Main training loop
     while agent._step < config.steps:
         # Evaluate (current model for eval_episode_num episodes)
+        eval_returns = None
         if config.eval_episode_num > 0:
             print("Evaluation")
             eval_env = make_mario_env(config)
-            simulate(
+            eval_returns = simulate(
                 lambda o, d, s: agent(o, d, s, training=False),
                 eval_env,
                 eval_eps,
@@ -670,11 +676,20 @@ def main(config):
 
         # Save checkpoint
         print("Saving checkpoint")
-        torch.save({
+        checkpoint_data = {
             "world_model": agent._world_model.state_dict(),
             "actor_critic": agent._actor_critic.state_dict(),
             "optimizers": tools.recursively_collect_optim_state_dict(agent)
-        }, logdir / "latest.pt")
+        }
+        torch.save(checkpoint_data, logdir / "latest.pt")
+
+        # Save best checkpoint based on evaluation performance
+        if eval_returns is not None and len(eval_returns) > 0:
+            mean_eval_return = np.mean(eval_returns)
+            if mean_eval_return > best_eval_return:
+                best_eval_return = mean_eval_return
+                print(f"Saving new best checkpoint with evaluation metric: {mean_eval_return:.2f}")
+                torch.save(checkpoint_data, logdir / "best.pt")
 
     print("Training complete!")
     env.close()

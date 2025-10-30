@@ -1013,3 +1013,58 @@ def from_generator(generator, batch_size: int):
             data[key] = np.stack([b[key] for b in batch], axis=0)
 
         yield data
+
+
+# === Configuration Management ===
+
+def save_config(config: Any, logdir: pathlib.Path, verbose: bool = True):
+    """
+    Save configuration to YAML file in log directory
+
+    Converts config object to YAML format, handling tuples and nested structures.
+    Used to save training configuration for later use (e.g., during evaluation).
+
+    Args:
+        config: Configuration object with attributes
+        logdir: Log directory path
+        verbose: Whether to print save confirmation
+
+    Returns:
+        Path to saved config file
+    """
+    import ruamel.yaml as yaml
+
+    config_save_path = pathlib.Path(logdir) / "config.yaml"
+
+    # Skip if config already exists
+    if config_save_path.exists():
+        if verbose:
+            print(f"Config already exists at {config_save_path}")
+        return config_save_path
+
+    # Convert tuples to lists for YAML compatibility
+    def convert_tuples(obj):
+        if isinstance(obj, tuple):
+            return list(obj)
+        elif isinstance(obj, dict):
+            return {k: convert_tuples(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_tuples(item) for item in obj]
+        else:
+            return obj
+
+    # Convert config attributes to dict
+    config_dict = {
+        k: convert_tuples(v)
+        for k, v in vars(config).items()
+        if not k.startswith('_')
+    }
+
+    # Save to YAML
+    with open(config_save_path, 'w') as f:
+        yaml.dump(config_dict, f, default_flow_style=False)
+
+    if verbose:
+        print(f"Saved config to {config_save_path}")
+
+    return config_save_path

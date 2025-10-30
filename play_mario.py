@@ -31,7 +31,8 @@ def play_mario(
     use_mode_for_action: bool = True,
     render: bool = True,
     verbose: bool = True,
-    frame_delay: float = 0.02
+    frame_delay: float = 0.02,
+    use_best: bool = True
 ):
     """
     Play Mario with trained agent
@@ -44,6 +45,7 @@ def play_mario(
         render: Whether to render the game window
         verbose: Print detailed info
         frame_delay: Delay in seconds between frames (0.02 = ~50 FPS, 0.05 = ~20 FPS)
+        use_best: Use best.pt checkpoint (default: True, can use latest.pt instead)
     """
     logdir = pathlib.Path(logdir).expanduser()
 
@@ -72,7 +74,8 @@ def play_mario(
         config.frame_delay = frame_delay
 
     # Load checkpoint
-    checkpoint_path = logdir / "latest.pt"
+    checkpoint_name = "best.pt" if use_best else "latest.pt"
+    checkpoint_path = logdir / checkpoint_name
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
@@ -90,6 +93,9 @@ def play_mario(
     # Get observation and action spaces
     obs_space = env.observation_space
     act_space = env.action_space
+
+    # Set num_actions from action space (needed for WorldModel)
+    config.num_actions = act_space.n
 
     # Create agent (we only need the policy, not training components)
     if verbose:
@@ -281,6 +287,12 @@ def main():
         default=0.015,
         help='Delay between frames in seconds (default: 0.02 = ~50 FPS)'
     )
+    parser.add_argument(
+        '--latest',
+        action='store_false',
+        dest='best',
+        help='Use latest.pt checkpoint instead of best.pt (default: use best.pt)'
+    )
 
     args = parser.parse_args()
 
@@ -291,7 +303,8 @@ def main():
         use_mode_for_action=not args.action_sample,
         render=not args.no_render,
         verbose=not args.quiet,
-        frame_delay=args.frame_delay
+        frame_delay=args.frame_delay,
+        use_best=args.best
     )
 
 
