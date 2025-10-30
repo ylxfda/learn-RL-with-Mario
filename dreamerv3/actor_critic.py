@@ -172,7 +172,7 @@ class ActorCritic(nn.Module):
         # === 1. Imagine Trajectories ===
         # Roll out policy in latent space
         with tools.RequiresGrad(self.actor):
-            with torch.cuda.amp.autocast(self._use_amp):
+            with torch.amp.autocast('cuda', enabled=self._use_amp):
                 # Imagine forward using policy
                 # Output shapes: (horizon+1, batch, ...)
                 imag_feat, imag_state, imag_action = self._imagine(
@@ -215,7 +215,7 @@ class ActorCritic(nn.Module):
         # === 4. Compute Critic Loss ===
         # Train value function to predict returns
         with tools.RequiresGrad(self.value):
-            with torch.cuda.amp.autocast(self._use_amp):
+            with torch.amp.autocast('cuda', enabled=self._use_amp):
                 # Predict values
                 # Shape: (horizon, batch, 1)
                 value = self.value(value_input[:-1].detach())

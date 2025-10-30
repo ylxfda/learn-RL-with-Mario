@@ -204,7 +204,7 @@ class WorldModel(nn.Module):
         data = self.preprocess(data)
 
         with tools.RequiresGrad(self):
-            with torch.cuda.amp.autocast(self._use_amp):
+            with torch.amp.autocast('cuda', enabled=self._use_amp):
                 # === 1. Encode observations ===
                 # o_t -> e_t
                 embed = self.encoder(data)
@@ -292,7 +292,7 @@ class WorldModel(nn.Module):
         metrics["rep_loss"] = tools.to_np(rep_loss)
         metrics["kl"] = tools.to_np(torch.mean(kl_value))
 
-        with torch.cuda.amp.autocast(self._use_amp):
+        with torch.amp.autocast('cuda', enabled=self._use_amp):
             # Distribution entropies
             metrics["prior_ent"] = tools.to_np(
                 torch.mean(self.dynamics.get_dist(prior).entropy())
