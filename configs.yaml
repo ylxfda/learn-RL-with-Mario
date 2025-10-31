@@ -20,7 +20,7 @@ defaults:
   log_every: 10000         # Log metrics every N steps
   device: 'cuda:0'         # Device: 'cuda:0', 'cuda:1', or 'cpu'
   compile: False           # PyTorch 2.0 compilation (set True if available)
-  precision: 32            # Precision: 32 (float32) or 16 (mixed precision)
+  precision: 16            # Precision: 32 (float32) or 16 (mixed precision)
   video_pred_log: True     # Whether to log video predictions
 
   # === Environment Settings ===
@@ -90,12 +90,12 @@ defaults:
   actor:
     layers: 2                # Number of hidden layers
     dist: 'onehot'           # Distribution: 'onehot' for discrete actions
-    entropy: 0.0003          # Entropy regularization coefficient
+    entropy: 0.001           # Entropy regularization coefficient
     unimix_ratio: 0.01       # Uniform mixing for exploration
     std: 'none'              # Std type (not used for discrete)
     min_std: 0.1             # Minimum std (not used for discrete)
     max_std: 1.0             # Maximum std (not used for discrete)
-    temp: 0.1                # Temperature for sampling
+    temp: 0.3                # Temperature for sampling
     lr: 0.00003              # Learning rate (3e-5)
     eps: 0.00001             # Adam epsilon (1e-5)
     grad_clip: 100.0         # Gradient clipping threshold
@@ -106,8 +106,8 @@ defaults:
     layers: 2                       # Number of hidden layers
     dist: 'symlog_disc'             # Distribution: discretized symlog
     slow_target: True               # Use slow target network
-    slow_target_update: 1           # Update target every N steps
-    slow_target_fraction: 0.02      # EMA coefficient for target (2%)
+    slow_target_update: 100         # Update target every N steps
+    slow_target_fraction: 0.01      # EMA coefficient for target (1%)
     lr: 0.00003                     # Learning rate (3e-5)
     eps: 0.00001                    # Adam epsilon (1e-5)
     grad_clip: 100.0                # Gradient clipping threshold
@@ -138,7 +138,7 @@ defaults:
   # Optimization
   batch_size: 16             # Batch size (number of sequences)
   batch_length: 64           # Sequence length
-  train_ratio: 1024          # Train steps per environment step
+  train_ratio: 512           # Train steps per environment step
   pretrain: 100              # Pretraining steps before main training
   model_lr: 0.0001           # World model learning rate (1e-4)
   opt_eps: 0.00000001        # Adam epsilon (1e-8)
@@ -152,43 +152,13 @@ defaults:
   imag_horizon: 15           # Imagination horizon (planning steps)
   imag_gradient: 'reinforce' # Gradient estimator: 'dynamics' or 'reinforce'
   imag_gradient_mix: 0.0     # Mix ratio if using 'both'
+  imag_reward_clip: 50.0     # Clip imagined rewards to prevent hallucinations
 
   # === Exploration (not used for Mario) ===
   expl_behavior: 'greedy'    # Exploration strategy: 'greedy', 'random'
   expl_until: 0              # Explore until step N (0 = never)
   expl_extr_scale: 0.0       # Extrinsic reward scale during exploration
   expl_intr_scale: 1.0       # Intrinsic reward scale during exploration
-
-# ============================================================================
-# Stable Configuration (for addressing training instability)
-# ============================================================================
-# This configuration fixes training instability by:
-# 1. Switching to 'dynamics' gradient estimator (lower variance)
-# 2. Increasing exploration (higher entropy, higher temperature)
-# 3. Stabilizing value learning (slower target updates)
-# 4. Reducing world model overfitting (lower train_ratio)
-# 5. Clipping imagined rewards to prevent hallucinations
-#
-# Use: python train_mario.py --configs defaults stable
-stable:
-  # logdir: ./logdir/mario_stable  # Different logdir to avoid confusion
-
-  # Actor improvements: more exploration
-  actor:
-    entropy: 0.001           # INCREASED from 0.0003 (more exploration)
-    temp: 0.3                # INCREASED from 0.1 (more stochastic)
-
-  # Critic improvements: more stable targets
-  critic:
-    slow_target_update: 100  # CHANGED from 1 (update target every 100 steps)
-    slow_target_fraction: 0.01  # REDUCED from 0.02 (slower EMA)
-
-  # Training improvements: less overfitting
-  train_ratio: 512           # REDUCED from 1024 (less world model overfitting)
-
-  # Actor-critic improvements: lower variance, reward clipping
-  # imag_gradient: 'dynamics'  # CHANGED from 'reinforce' (lower variance gradients)
-  imag_reward_clip: 50.0     # NEW: clip imagined rewards to prevent hallucinations
 
 # ============================================================================
 # High Exploration Configuration (for escaping local optima)
@@ -226,32 +196,6 @@ gpu_optimized:
   # Adjust pretrain for larger batches
   pretrain: 150              # INCREASED from 100 (more initial training steps)
 
-# ============================================================================
-# Aggressive GPU Optimization (for maximum throughput)
-# ============================================================================
-# Use this if gpu_optimized still shows low utilization and VRAM peaks < 85%
-# Pushes batch sizes even higher for maximum GPU usage
-#
-# Requirements: 12GB+ VRAM, seeing VRAM fluctuate 30-80% with gpu_optimized
-# WARNING: May cause gradient instability (inf/nan) - use gpu_optimized if issues occur
-#
-# Use: python train_mario.py --configs defaults stable gpu_aggressive
-gpu_aggressive:
-  # Enable mixed precision
-  precision: 16
-
-  # Push batch sizes higher (reduced from initial 48/96 due to gradient instability)
-  batch_size: 40             # Reduced from 48 (balance between speed and stability)
-  batch_length: 88           # Reduced from 96 (avoid gradient explosion)
-
-  # More gradient updates per env step (reduced to avoid overfitting)
-  train_ratio: 896           # Reduced from 1024 (better stability)
-
-  # Tighter gradient clipping to prevent inf/nan
-  grad_clip: 500             # Reduced from 1000 (prevent gradient explosion)
-
-  # Adjust for larger batches
-  pretrain: 180
 
 # ============================================================================
 # Debugging Configuration (for quick testing)
@@ -290,11 +234,6 @@ debug:
 #   - mario_flag_reward=1000.0: Large bonus for completing level
 #   - mario_death_penalty=-15.0: Penalty to discourage dying
 #
-# Hardware:
-#   - This configuration trains in ~12-24 hours on a modern GPU
-#   - Mixed precision (precision=16) can speed up training
-#   - Set envs>1 for parallel environments (requires more memory)
-#
 # ============================================================================
 # When to Use Each Configuration
 # ============================================================================
@@ -304,15 +243,6 @@ debug:
 #   - Use when training is stable and performing well
 #   - Command: python train_mario.py --configs defaults
 #   - Or simply: python train_mario.py
-#
-# stable:
-#   - Use when experiencing training instability:
-#     * Sudden drops in evaluation performance
-#     * World model hallucinating rewards (imag_reward_max > 100)
-#     * High variance in episode returns
-#     * Low actor entropy (< 0.2)
-#   - Command: python train_mario.py --configs defaults stable
-#   - Key changes: dynamics gradients, higher exploration, slower target updates
 #
 # explore:
 #   - Use when agent is stuck in a bad local optimum
@@ -327,13 +257,6 @@ debug:
 #   - Requirements: 8GB+ VRAM, tensor core GPU recommended
 #   - Expected: 2-3x faster training, 60-80% GPU utilization
 #
-# gpu_aggressive:
-#   - Use when gpu_optimized still shows VRAM fluctuating 30-80%
-#   - Maximum batch sizes for highest throughput
-#   - Command: python train_mario.py --configs defaults stable gpu_aggressive
-#   - Requirements: 12GB+ VRAM
-#   - Expected: 3-4x faster training, 80-95% GPU utilization
-#
 # debug:
 #   - Fast configuration for testing code changes
 #   - Smaller batch sizes, fewer steps, more frequent evaluation
@@ -342,7 +265,7 @@ debug:
 #
 # Combining configs:
 #   - Configs are merged left-to-right, later values override earlier ones
-#   - Example: python train_mario.py --configs defaults stable gpu_optimized
-#     (This uses stable config with GPU optimizations for fast, stable training)
-#   - Example: python train_mario.py --configs defaults stable debug
-#     (This would use stable config but with debug's smaller steps/batches)
+#   - Example: python train_mario.py --configs defaults gpu_optimized
+#     (This uses config with GPU optimizations for fast training)
+#   - Example: python train_mario.py --configs defaults debug
+#     (This would use debug's smaller steps/batches)
