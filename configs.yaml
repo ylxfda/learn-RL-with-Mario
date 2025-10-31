@@ -160,6 +160,52 @@ defaults:
   expl_intr_scale: 1.0       # Intrinsic reward scale during exploration
 
 # ============================================================================
+# Stable Configuration (for addressing training instability)
+# ============================================================================
+# This configuration fixes training instability by:
+# 1. Switching to 'dynamics' gradient estimator (lower variance)
+# 2. Increasing exploration (higher entropy, higher temperature)
+# 3. Stabilizing value learning (slower target updates)
+# 4. Reducing world model overfitting (lower train_ratio)
+# 5. Clipping imagined rewards to prevent hallucinations
+#
+# Use: python train_mario.py --configs defaults stable
+stable:
+  # logdir: ./logdir/mario_stable  # Different logdir to avoid confusion
+
+  # Actor improvements: more exploration
+  actor:
+    entropy: 0.001           # INCREASED from 0.0003 (more exploration)
+    temp: 0.3                # INCREASED from 0.1 (more stochastic)
+
+  # Critic improvements: more stable targets
+  critic:
+    slow_target_update: 100  # CHANGED from 1 (update target every 100 steps)
+    slow_target_fraction: 0.01  # REDUCED from 0.02 (slower EMA)
+
+  # Training improvements: less overfitting
+  train_ratio: 512           # REDUCED from 1024 (less world model overfitting)
+
+  # Actor-critic improvements: lower variance, reward clipping
+  imag_gradient: 'dynamics'  # CHANGED from 'reinforce' (lower variance gradients)
+  imag_reward_clip: 50.0     # NEW: clip imagined rewards to prevent hallucinations
+
+# ============================================================================
+# High Exploration Configuration (for escaping local optima)
+# ============================================================================
+# Use this when agent is stuck in a bad local optimum (e.g., always dying early)
+# This dramatically increases exploration to help the agent discover better behaviors
+#
+# Use: python train_mario.py --configs defaults stable explore
+explore:
+  # Much higher exploration + slower learning
+  actor:
+    entropy: 0.003           # 3x higher than stable (very high exploration)
+    temp: 0.5                # Much more stochastic
+    unimix_ratio: 0.1        # 10% uniform random actions
+    lr: 0.00001              # 1/3 of original (slower policy updates)
+
+# ============================================================================
 # Debugging Configuration (for quick testing)
 # ============================================================================
 debug:
@@ -200,3 +246,33 @@ debug:
 #   - This configuration trains in ~12-24 hours on a modern GPU
 #   - Mixed precision (precision=16) can speed up training
 #   - Set envs>1 for parallel environments (requires more memory)
+#
+# ============================================================================
+# When to Use Each Configuration
+# ============================================================================
+#
+# defaults:
+#   - Standard DreamerV3 configuration for Mario
+#   - Use when training is stable and performing well
+#   - Command: python train_mario.py --configs defaults
+#   - Or simply: python train_mario.py
+#
+# stable:
+#   - Use when experiencing training instability:
+#     * Sudden drops in evaluation performance
+#     * World model hallucinating rewards (imag_reward_max > 100)
+#     * High variance in episode returns
+#     * Low actor entropy (< 0.2)
+#   - Command: python train_mario.py --configs defaults stable
+#   - Key changes: dynamics gradients, higher exploration, slower target updates
+#
+# debug:
+#   - Fast configuration for testing code changes
+#   - Smaller batch sizes, fewer steps, more frequent evaluation
+#   - Command: python train_mario.py --configs defaults debug
+#   - Not for serious training, only for debugging
+#
+# Combining configs:
+#   - Configs are merged left-to-right, later values override earlier ones
+#   - Example: python train_mario.py --configs defaults stable debug
+#     (This would use stable config but with debug's smaller steps/batches)

@@ -183,6 +183,15 @@ class ActorCritic(nn.Module):
                 # Shape: (horizon+1, batch, 1)
                 reward = objective(imag_feat, imag_state, imag_action)
 
+                # Optional: Clip imagined rewards to prevent world model hallucinations
+                # This helps stabilize training when the world model predicts unrealistic rewards
+                if hasattr(self._config, 'imag_reward_clip') and self._config.imag_reward_clip > 0:
+                    reward = torch.clamp(
+                        reward,
+                        min=-self._config.imag_reward_clip,
+                        max=self._config.imag_reward_clip
+                    )
+
                 # Compute entropy for regularization
                 actor_ent = self.actor(imag_feat).entropy()
                 state_ent = self._world_model.dynamics.get_dist(imag_state).entropy()

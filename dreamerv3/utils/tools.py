@@ -42,6 +42,38 @@ def to_np(x: torch.Tensor) -> np.ndarray:
     return x.detach().cpu().numpy()
 
 
+def deep_merge(base: dict, override: dict) -> dict:
+    """
+    Deep merge two dictionaries, recursively merging nested dicts
+
+    This is useful for merging configuration dictionaries where you want
+    to override specific nested values while preserving others.
+
+    Args:
+        base: Base dictionary
+        override: Override dictionary
+
+    Returns:
+        Merged dictionary (new dict, does not modify inputs)
+
+    Example:
+        >>> base = {"a": {"b": 1, "c": 2}, "d": 3}
+        >>> override = {"a": {"c": 3, "e": 4}}
+        >>> result = deep_merge(base, override)
+        >>> result
+        {"a": {"b": 1, "c": 3, "e": 4}, "d": 3}  # b kept, c overridden, e added
+    """
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            # Recursively merge nested dictionaries
+            result[key] = deep_merge(result[key], value)
+        else:
+            # Direct override for non-dict values or new keys
+            result[key] = value
+    return result
+
+
 # === Weight Initialization ===
 
 def weight_init(m: nn.Module):

@@ -707,12 +707,12 @@ if __name__ == "__main__":
         (pathlib.Path(__file__).parent / "configs.yaml").read_text()
     )
 
-    # Merge configs
+    # Merge configs (using deep merge to preserve nested dict values)
     config_dict = {}
     for name in args.configs:
         if name not in configs:
             raise ValueError(f"Config '{name}' not found in configs.yaml")
-        config_dict.update(configs[name])
+        config_dict = tools.deep_merge(config_dict, configs[name])
 
     # Override with command-line arguments
     parser = argparse.ArgumentParser()
