@@ -187,7 +187,7 @@ stable:
   train_ratio: 512           # REDUCED from 1024 (less world model overfitting)
 
   # Actor-critic improvements: lower variance, reward clipping
-  imag_gradient: 'dynamics'  # CHANGED from 'reinforce' (lower variance gradients)
+  # imag_gradient: 'dynamics'  # CHANGED from 'reinforce' (lower variance gradients)
   imag_reward_clip: 50.0     # NEW: clip imagined rewards to prevent hallucinations
 
 # ============================================================================
@@ -204,6 +204,54 @@ explore:
     temp: 0.5                # Much more stochastic
     unimix_ratio: 0.1        # 10% uniform random actions
     lr: 0.00001              # 1/3 of original (slower policy updates)
+
+# ============================================================================
+# GPU Optimized Configuration (for better GPU utilization)
+# ============================================================================
+# Use this when GPU utilization is low (< 30%) but you have VRAM headroom
+# This increases batch sizes and enables mixed precision to maximize throughput
+#
+# Use: python train_mario.py --configs defaults stable gpu_optimized
+gpu_optimized:
+  # Enable mixed precision for 2x speedup and lower VRAM usage
+  precision: 16              # CHANGED from 32 (enables automatic mixed precision)
+
+  # Increase batch sizes to fill GPU
+  batch_size: 32             # DOUBLED from 16 (more parallel training)
+  batch_length: 80           # INCREASED from 64 (longer sequences)
+
+  # Increase train ratio to fully utilize GPU compute
+  train_ratio: 768           # INCREASED from 512 (more gradient steps per env step)
+
+  # Adjust pretrain for larger batches
+  pretrain: 150              # INCREASED from 100 (more initial training steps)
+
+# ============================================================================
+# Aggressive GPU Optimization (for maximum throughput)
+# ============================================================================
+# Use this if gpu_optimized still shows low utilization and VRAM peaks < 85%
+# Pushes batch sizes even higher for maximum GPU usage
+#
+# Requirements: 12GB+ VRAM, seeing VRAM fluctuate 30-80% with gpu_optimized
+# WARNING: May cause gradient instability (inf/nan) - use gpu_optimized if issues occur
+#
+# Use: python train_mario.py --configs defaults stable gpu_aggressive
+gpu_aggressive:
+  # Enable mixed precision
+  precision: 16
+
+  # Push batch sizes higher (reduced from initial 48/96 due to gradient instability)
+  batch_size: 40             # Reduced from 48 (balance between speed and stability)
+  batch_length: 88           # Reduced from 96 (avoid gradient explosion)
+
+  # More gradient updates per env step (reduced to avoid overfitting)
+  train_ratio: 896           # Reduced from 1024 (better stability)
+
+  # Tighter gradient clipping to prevent inf/nan
+  grad_clip: 500             # Reduced from 1000 (prevent gradient explosion)
+
+  # Adjust for larger batches
+  pretrain: 180
 
 # ============================================================================
 # Debugging Configuration (for quick testing)
@@ -266,6 +314,26 @@ debug:
 #   - Command: python train_mario.py --configs defaults stable
 #   - Key changes: dynamics gradients, higher exploration, slower target updates
 #
+# explore:
+#   - Use when agent is stuck in a bad local optimum
+#   - Dramatically increases exploration to escape suboptimal behaviors
+#   - Command: python train_mario.py --configs defaults stable explore
+#   - Warning: May take longer to converge
+#
+# gpu_optimized:
+#   - Use when GPU utilization is low (< 30%) but you have VRAM headroom
+#   - Enables mixed precision and increases batch sizes for better throughput
+#   - Command: python train_mario.py --configs defaults stable gpu_optimized
+#   - Requirements: 8GB+ VRAM, tensor core GPU recommended
+#   - Expected: 2-3x faster training, 60-80% GPU utilization
+#
+# gpu_aggressive:
+#   - Use when gpu_optimized still shows VRAM fluctuating 30-80%
+#   - Maximum batch sizes for highest throughput
+#   - Command: python train_mario.py --configs defaults stable gpu_aggressive
+#   - Requirements: 12GB+ VRAM
+#   - Expected: 3-4x faster training, 80-95% GPU utilization
+#
 # debug:
 #   - Fast configuration for testing code changes
 #   - Smaller batch sizes, fewer steps, more frequent evaluation
@@ -274,5 +342,7 @@ debug:
 #
 # Combining configs:
 #   - Configs are merged left-to-right, later values override earlier ones
+#   - Example: python train_mario.py --configs defaults stable gpu_optimized
+#     (This uses stable config with GPU optimizations for fast, stable training)
 #   - Example: python train_mario.py --configs defaults stable debug
 #     (This would use stable config but with debug's smaller steps/batches)

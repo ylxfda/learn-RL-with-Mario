@@ -686,10 +686,15 @@ def main(config):
         # Save best checkpoint based on evaluation performance
         if eval_returns is not None and len(eval_returns) > 0:
             mean_eval_return = np.mean(eval_returns)
+            print(f"Evaluation: mean_return={mean_eval_return:.2f}, best_so_far={best_eval_return:.2f}")
             if mean_eval_return > best_eval_return:
                 best_eval_return = mean_eval_return
-                print(f"Saving new best checkpoint with evaluation metric: {mean_eval_return:.2f}")
+                print(f"✓ Saving new best checkpoint with evaluation metric: {mean_eval_return:.2f}")
                 torch.save(checkpoint_data, logdir / "best.pt")
+            else:
+                print(f"  (not better than current best {best_eval_return:.2f}, not saving)")
+        else:
+            print(f"Warning: eval_returns is {'None' if eval_returns is None else 'empty'}, skipping best checkpoint")
 
     print("Training complete!")
     env.close()
