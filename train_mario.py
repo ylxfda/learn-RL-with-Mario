@@ -443,9 +443,16 @@ def simulate(
         # Reset environment if needed
         if done:
             obs = env.reset()
-            # Initialize new episode buffer (don't save initial obs yet)
+            # Initialize new episode buffer
             current_episode = {}
-            length = 0
+            length = 0  # Reset length counter
+            # Add initial transition
+            t = {k: tools.convert(v) for k, v in obs.items()}
+            t["reward"] = 0.0
+            t["discount"] = 1.0
+            # Initialize episode buffer
+            for key, val in t.items():
+                current_episode[key] = [val]
 
         # Add batch dimension for agent
         obs_batch = {
@@ -454,7 +461,7 @@ def simulate(
         }
         done_batch = np.array([done])
 
-        # Get action from agent (for current obs)
+        # Get action from agent
         action, agent_state = agent(obs_batch, done_batch, agent_state)
 
         # Convert one-hot action to index for environment
@@ -469,27 +476,24 @@ def simulate(
             for k in action
         }
 
-        # Step environment to get next obs and reward
-        next_obs, reward, done, info = env.step(env_action)
+        # Step environment
+        obs, reward, done, info = env.step(env_action)
 
-        # NEW FORMAT: Save (current_obs, action_taken_from_this_obs, reward_received)
-        # This makes the data format: data[t] = (obs_t, action_t, reward_t)
-        t = {k: tools.convert(v) for k, v in obs.items()}  # Current obs (before step)
-        t.update(action_dict)  # Action taken in current obs
-        t["reward"] = reward  # Reward received after executing action
-        t["discount"] = info.get("discount", np.array(1 - float(done)))
-
-        # Append to current episode buffer
-        for key, val in t.items():
-            if key not in current_episode:
-                current_episode[key] = []
-            current_episode[key].append(val)
-
-        # Update state for next iteration
-        obs = next_obs
         episode += int(done)
         length += 1
         step += 1
+
+        # Add transition to current episode
+        t = {k: tools.convert(v) for k, v in obs.items()}
+        t.update(action_dict)  # Add action dict (with one-hot "action" and "logprob")
+        t["reward"] = reward
+        t["discount"] = info.get("discount", np.array(1 - float(done)))
+        # Append to current episode buffer
+        for key, val in t.items():
+            if key not in current_episode:
+                # Handle missing keys (e.g., action added after first transition)
+                current_episode[key] = [tools.convert(0 * val)] * (length)
+            current_episode[key].append(val)
 
         # Log completed episode
         if done:
@@ -498,9 +502,8 @@ def simulate(
                 k: np.array(v) for k, v in current_episode.items()
             }
 
-            # Calculate episode metrics first
-            # In new format, each element is a complete transition, so length is direct count
-            ep_length = len(current_episode["reward"])
+            # Calculate episode metrics
+            ep_length = len(current_episode["reward"]) - 1
 
             # Generate unique episode ID (length will be added by save_episodes)
             import time
