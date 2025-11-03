@@ -356,14 +356,14 @@ def main(config):
             print("EVALUATION")
             print("=" * 80)
 
-            # Enable video recording (record 3 random episodes)
+            # Enable video recording (controlled by config)
             eval_metrics = evaluate_agent(
                 agent,
                 config,
                 num_episodes=config.eval_episodes,
                 render=False,
-                record_video=True,
-                num_video_episodes=3
+                record_video=getattr(config, 'record_eval_videos', True),
+                num_video_episodes=getattr(config, 'num_video_episodes', 3)
             )
 
             print(f"Episodes: {config.eval_episodes}")
@@ -384,7 +384,7 @@ def main(config):
                     eval_metrics['videos'],
                     'eval/episodes',
                     timestep,
-                    fps=16
+                    fps=getattr(config, 'video_fps', 16)
                 )
 
             # Save best checkpoint
@@ -428,7 +428,7 @@ def main(config):
             final_metrics['videos'],
             'eval/final_episodes',
             timestep,
-            fps=16
+            fps=getattr(config, 'video_fps', 16)
         )
 
     print("=" * 80)
