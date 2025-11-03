@@ -1,0 +1,217 @@
+# PPO Configuration for Super Mario Bros Stage 1-1
+#
+# This configuration implements Proximal Policy Optimization (PPO) for
+# training on Super Mario Bros level 1-1. The hyperparameters are based on:
+#
+# Paper: "Proximal Policy Optimization Algorithms" (Schulman et al., 2017)
+# https://arxiv.org/abs/1707.06347
+#
+# Usage:
+#   python train_mario_ppo.py --configs defaults
+#
+# ============================================================================
+# Default Hyperparameters
+# ============================================================================
+defaults:
+  # === Logging and Directories ===
+  logdir: ./logdir/mario_ppo      # Directory for logs and checkpoints
+  seed: 0                         # Random seed for reproducibility
+  total_timesteps: 10000000       # Total training timesteps (10M)
+  eval_freq: 100000               # Evaluate every N timesteps
+  eval_episodes: 10               # Number of evaluation episodes
+  log_freq: 10000                 # Log metrics every N timesteps
+  save_freq: 100000               # Save checkpoint every N timesteps
+  device: 'cuda:0'                # Device: 'cuda:0', 'cuda:1', or 'cpu'
+
+  # Video logging (TensorBoard)
+  record_eval_videos: True        # Record evaluation episodes as videos
+  num_video_episodes: 3           # Number of episodes to record per evaluation
+  video_fps: 16                   # Frames per second for video playback
+
+  # === Environment Settings ===
+  task: 'mario'                   # Task identifier
+  size: [64, 64]                  # Observation size (height, width)
+  num_envs: 32                    # Number of parallel environments
+  action_repeat: 4                # Action repeat (frame skip)
+  grayscale: False                # Whether to use grayscale images
+  mario_action_set: simple        # Action set: 'simple' (7 actions)
+  mario_flag_reward: 1000.0       # Bonus reward for reaching flag
+  mario_reward_scale: 1.0         # Scale for distance-based rewards
+  mario_time_penalty: -0.5        # Penalty for time spent
+  mario_death_penalty: -15.0      # Penalty for losing a life
+
+  # === PPO Algorithm Parameters ===
+  # Rollout settings
+  num_steps: 128                  # Number of steps per rollout per env
+                                  # Total steps per update = num_steps × num_envs
+                                  # 128 × 32 = 4096 transitions
+
+  # Optimization hyperparameters (from PPO paper)
+  learning_rate: 0.00025          # Learning rate (2.5e-4)
+                                  # Constant LR works well for PPO
+  update_epochs: 4                # Number of epochs per update
+                                  # Standard PPO uses 3-10 epochs
+  batch_size: 256                 # Mini-batch size
+                                  # Should divide (num_steps × num_envs) evenly
+                                  # 4096 / 256 = 16 batches per epoch
+
+  # PPO-specific hyperparameters
+  gamma: 0.99                     # Discount factor γ
+                                  # Higher = more far-sighted
+  gae_lambda: 0.95                # GAE parameter λ
+                                  # Trade-off between bias and variance
+  clip_coef: 0.2                  # PPO clipping parameter ε
+                                  # Typical range: 0.1-0.3
+                                  # Prevents destructively large policy updates
+  vf_coef: 0.5                    # Value function loss coefficient c_1
+                                  # Balances value and policy learning
+  ent_coef: 0.01                  # Entropy bonus coefficient c_2
+                                  # Encourages exploration
+                                  # Higher = more exploration
+  max_grad_norm: 0.5              # Gradient clipping threshold
+                                  # Prevents exploding gradients
+
+  # === Network Architecture ===
+  feature_dim: 512                # CNN feature dimension
+                                  # Shared by actor and critic
+
+  # === Advantage Normalization ===
+  normalize_advantages: True      # Normalize advantages per batch
+                                  # Recommended for training stability
+
+  # === Reward Normalization (optional) ===
+  normalize_rewards: False        # Normalize rewards with running statistics
+                                  # Can help with sparse rewards
+  reward_clip: 10.0               # Clip rewards to [-clip, +clip]
+                                  # Prevents extreme rewards from dominating
+
+# ============================================================================
+# High Exploration Configuration
+# ============================================================================
+# Use when agent gets stuck in local optima
+# Increases entropy bonus for more exploration
+#
+# Usage: python train_mario_ppo.py --configs defaults explore
+explore:
+  ent_coef: 0.05                  # 5x higher entropy bonus
+  learning_rate: 0.0001           # Slightly lower LR for stability
+
+# ============================================================================
+# Fast Training Configuration
+# ============================================================================
+# For faster iteration during development
+# Fewer environments and smaller batches
+#
+# Usage: python train_mario_ppo.py --configs defaults fast
+fast:
+  num_envs: 8                     # Fewer parallel envs
+  num_steps: 128                  # Keep same rollout length
+  batch_size: 128                 # Smaller batches
+  update_epochs: 3                # Fewer epochs
+  total_timesteps: 2000000        # Shorter training
+
+# ============================================================================
+# Debug Configuration
+# ============================================================================
+# Very fast for testing code changes
+#
+# Usage: python train_mario_ppo.py --configs debug
+debug:
+  num_envs: 4                     # Minimal parallel envs
+  num_steps: 64                   # Short rollouts
+  batch_size: 64                  # Small batches
+  update_epochs: 2                # Few epochs
+  total_timesteps: 100000         # Very short training
+  eval_freq: 10000                # Frequent evaluation
+  log_freq: 1000                  # Frequent logging
+  save_freq: 10000                # Frequent saves
+
+# ============================================================================
+# Notes on Key Hyperparameters
+# ============================================================================
+#
+# PPO Algorithm (Schulman et al. 2017):
+#   - clip_coef (ε): Controls policy update magnitude
+#     * Too small: slow learning
+#     * Too large: unstable updates
+#     * 0.2 is a robust default
+#
+#   - update_epochs: Number of SGD passes over rollout data
+#     * More epochs = better sample efficiency but risk overfitting
+#     * 3-10 is typical range
+#     * 4 is a good default
+#
+#   - num_steps: Rollout length per environment
+#     * Longer = more on-policy data but slower updates
+#     * 128-2048 is typical range
+#     * 128 works well for Mario
+#
+# GAE (Schulman et al. 2016):
+#   - gae_lambda (λ): Bias-variance tradeoff
+#     * λ=0: 1-step TD (low variance, high bias)
+#     * λ=1: Monte Carlo (high variance, low bias)
+#     * 0.95 is a good middle ground
+#
+# Environment:
+#   - num_envs: Number of parallel environments
+#     * More envs = faster data collection
+#     * But requires more CPU/memory
+#     * 32 is a good balance for Mario
+#
+#   - action_repeat: Frame skip
+#     * Higher = faster learning but less control
+#     * 4 is standard for Atari/Mario
+#
+# Learning Rate:
+#   - PPO typically uses constant LR (no schedule)
+#   - 2.5e-4 is a robust default for Atari-style games
+#   - Can try 1e-4 to 5e-4 range
+#
+# Entropy Coefficient:
+#   - Controls exploration vs exploitation
+#   - Start with 0.01, increase if agent is too greedy
+#   - Decrease over time if using schedule (not standard)
+#
+# ============================================================================
+# When to Use Each Configuration
+# ============================================================================
+#
+# defaults:
+#   - Standard PPO setup for Mario
+#   - Balanced between speed and performance
+#   - Command: python train_mario_ppo.py
+#
+# explore:
+#   - Agent stuck in suboptimal strategy
+#   - Need more exploration
+#   - Command: python train_mario_ppo.py --configs defaults explore
+#
+# fast:
+#   - Faster iteration during development
+#   - Testing hyperparameters
+#   - Command: python train_mario_ppo.py --configs defaults fast
+#
+# debug:
+#   - Very fast for testing code changes
+#   - Not for actual training
+#   - Command: python train_mario_ppo.py --configs debug
+#
+# ============================================================================
+# Expected Training Time (on RTX 3080)
+# ============================================================================
+#
+# defaults (10M timesteps):
+#   - ~8-12 hours
+#   - ~2500 updates
+#   - Should reach flag within 3-5M timesteps
+#
+# fast (2M timesteps):
+#   - ~1.5-2.5 hours
+#   - ~500 updates
+#   - May reach flag if lucky
+#
+# debug (100K timesteps):
+#   - ~5-10 minutes
+#   - ~25 updates
+#   - Won't learn much, just for testing
+#
