@@ -20,7 +20,7 @@ import sys
 
 import numpy as np
 import torch
-import ruamel.yaml as yaml
+from ruamel.yaml import YAML
 
 # Add project to path
 sys.path.append(str(pathlib.Path(__file__).parent))
@@ -74,8 +74,8 @@ def play_mario(
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    with open(config_path, 'r') as f:
-        config_dict = yaml.safe_load(f)
+    yaml = YAML(typ='safe', pure=True)
+    config_dict = yaml.load(config_path)
 
     config = Config(config_dict)
 

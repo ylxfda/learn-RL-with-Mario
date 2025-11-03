@@ -27,10 +27,11 @@ import argparse
 import pathlib
 import time
 import sys
+from typing import Any
 
 import numpy as np
 import torch
-import ruamel.yaml as yaml
+from ruamel.yaml import YAML
 from torch.utils.tensorboard import SummaryWriter
 
 # Add project to path
@@ -39,13 +40,7 @@ sys.path.append(str(pathlib.Path(__file__).parent))
 from PPO.ppo_agent import PPOAgent
 from envs.vec_mario import make_vec_mario_env
 from envs.mario import MarioEnv
-
-
-class Config:
-    """Configuration wrapper"""
-    def __init__(self, config_dict):
-        for key, value in config_dict.items():
-            setattr(self, key, value)
+from dreamerv3.utils import tools
 
 
 def set_seed(seed: int):
@@ -107,7 +102,7 @@ def log_videos_to_tensorboard(writer, videos, name, timestep, fps=16):
 
 def evaluate_agent(
     agent: PPOAgent,
-    config: Config,
+    config: Any,
     num_episodes: int = 10,
     render: bool = False,
     record_video: bool = False,
@@ -181,6 +176,7 @@ def evaluate_agent(
         while not done:
             # Get action from agent (deterministic)
             action = agent.get_action(obs['image'], deterministic=True)
+            action = int(action)  # Convert numpy array to int
 
             # Step environment
             obs, reward, done, info = eval_env.step(action)
@@ -274,8 +270,10 @@ def main(config):
 
     # Save configuration
     config_path = logdir / 'config.yaml'
+    yaml = YAML()
+    yaml.default_flow_style = False
     with open(config_path, 'w') as f:
-        yaml.dump(vars(config), f, default_flow_style=False)
+        yaml.dump(vars(config), f)
     print(f"✓ Saved config to {config_path}")
 
     # Create PPO agent
@@ -454,11 +452,19 @@ if __name__ == "__main__":
 
     # Load config
     config_file = pathlib.Path(__file__).parent / "configs" / "ppo_configs.yaml"
-    configs = yaml.safe_load(config_file.read_text())
+    yaml = YAML(typ='safe', pure=True)
+    configs = yaml.load(config_file)
 
-    # Merge configs
-    config_dict = {}
+    # Merge configs (always start with defaults, then apply others)
+    if 'defaults' not in configs:
+        raise ValueError("'defaults' config not found in ppo_configs.yaml")
+
+    config_dict = dict(configs['defaults'])  # Start with defaults
+
+    # Apply requested configs on top (skip 'defaults' if already in args.configs)
     for name in args.configs:
+        if name == 'defaults':
+            continue  # Already loaded
         if name not in configs:
             raise ValueError(f"Config '{name}' not found in ppo_configs.yaml")
         # Simple merge (later configs override earlier ones)
@@ -467,10 +473,10 @@ if __name__ == "__main__":
     # Override with command-line arguments
     parser = argparse.ArgumentParser()
     for key, value in sorted(config_dict.items(), key=lambda x: x[0]):
-        arg_type = type(value) if not isinstance(value, list) else str
-        parser.add_argument(f"--{key}", type=arg_type, default=value)
+        arg_type = tools.args_type(value)
+        parser.add_argument(f"--{key}", type=arg_type, default=arg_type(value))
 
-    config = Config(vars(parser.parse_args(remaining)))
+    config = parser.parse_args(remaining)
 
     # Override logdir if specified
     if args.logdir:

@@ -186,8 +186,9 @@ class PPOAgent:
                 next_obs, rewards, dones, infos = vec_env.step(actions_np)
 
                 # Store transition in buffer
+                # Note: obs_tensor is already in CHW format which is what the buffer expects
                 self.rollout_buffer.add(
-                    obs=obs['image'],
+                    obs=obs_tensor.cpu().numpy(),  # Convert back to numpy for buffer storage
                     action=actions,
                     reward=rewards,
                     done=dones,
@@ -350,7 +351,7 @@ class PPOAgent:
         self,
         obs: np.ndarray,
         deterministic: bool = False
-    ) -> np.ndarray:
+    ) -> int:
         """
         Get action from policy for a single observation
 
@@ -374,7 +375,7 @@ class PPOAgent:
         # Get action from policy
         actions, _ = self.actor.get_action(obs_tensor, deterministic=deterministic)
 
-        return actions[0].cpu().numpy()
+        return int(actions[0].cpu().numpy())
 
     def save(self, path: str):
         """
