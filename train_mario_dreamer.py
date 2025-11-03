@@ -712,7 +712,7 @@ if __name__ == "__main__":
 
     # Load config
     configs = yaml.safe_load(
-        (pathlib.Path(__file__).parent / "configs.yaml").read_text()
+        (pathlib.Path(__file__).parent / "configs" / "dreamer_configs.yaml").read_text()
     )
 
     # Merge configs (using deep merge to preserve nested dict values)

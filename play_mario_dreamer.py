@@ -13,7 +13,8 @@ import torch
 import numpy as np
 import ruamel.yaml as yaml
 
-from train_mario import DreamerAgent, make_mario_env
+from train_mario_dreamer import DreamerAgent
+from envs.mario import make_mario_env
 from dreamerv3.utils import tools
 
 
