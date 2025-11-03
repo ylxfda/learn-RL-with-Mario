@@ -31,7 +31,7 @@ import sys
 
 import numpy as np
 import torch
-import ruamel.yaml as yaml
+from ruamel.yaml import YAML
 
 # Add project to path
 sys.path.append(str(pathlib.Path(__file__).parent))
@@ -711,9 +711,9 @@ if __name__ == "__main__":
     args, remaining = parser.parse_known_args()
 
     # Load config
-    configs = yaml.safe_load(
-        (pathlib.Path(__file__).parent / "configs" / "dreamer_configs.yaml").read_text()
-    )
+    yaml = YAML(typ='safe', pure=True)
+    with open(pathlib.Path(__file__).parent / "configs" / "dreamer_configs.yaml", 'r') as f:
+        configs = yaml.load(f)
 
     # Merge configs (using deep merge to preserve nested dict values)
     config_dict = {}

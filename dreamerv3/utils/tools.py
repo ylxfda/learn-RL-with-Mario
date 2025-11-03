@@ -1064,7 +1064,7 @@ def save_config(config: Any, logdir: pathlib.Path, verbose: bool = True):
     Returns:
         Path to saved config file
     """
-    import ruamel.yaml as yaml
+    from ruamel.yaml import YAML
 
     config_save_path = pathlib.Path(logdir) / "config.yaml"
 
@@ -1093,8 +1093,10 @@ def save_config(config: Any, logdir: pathlib.Path, verbose: bool = True):
     }
 
     # Save to YAML
+    yaml = YAML()
+    yaml.default_flow_style = False
     with open(config_save_path, 'w') as f:
-        yaml.dump(config_dict, f, default_flow_style=False)
+        yaml.dump(config_dict, f)
 
     if verbose:
         print(f"Saved config to {config_save_path}")
