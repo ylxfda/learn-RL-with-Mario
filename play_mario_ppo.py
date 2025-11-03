@@ -51,7 +51,7 @@ def play_mario(
     Args:
         logdir: Directory containing trained model
         num_episodes: Number of episodes to play
-        checkpoint: Checkpoint filename ('best.pt', 'latest.pt', 'final.pt')
+        checkpoint: Checkpoint filename ('best.pt' or 'latest.pt')
         deterministic: Use deterministic (greedy) actions vs stochastic sampling
         render: Whether to render the game window
         verbose: Print detailed info

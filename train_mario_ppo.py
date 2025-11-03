@@ -289,11 +289,11 @@ def main(config):
     print("✓ Agent initialized")
 
     # Load checkpoint if resuming
-    checkpoint_path = logdir / 'checkpoint.pt'
+    latest_checkpoint_path = logdir / 'latest.pt'
     start_timestep = 0
-    if checkpoint_path.exists() and getattr(config, 'resume', False):
-        print(f"\nLoading checkpoint from {checkpoint_path}")
-        agent.load(str(checkpoint_path))
+    if latest_checkpoint_path.exists() and getattr(config, 'resume', False):
+        print(f"\nLoading checkpoint from {latest_checkpoint_path}")
+        agent.load(str(latest_checkpoint_path))
         # Note: We don't track timestep in checkpoint, so we start from 0
         # In production, you'd want to save/load this
         print("✓ Checkpoint loaded")
@@ -396,10 +396,10 @@ def main(config):
 
             print("=" * 80)
 
-        # === Save Checkpoint ===
+        # === Save Latest Checkpoint ===
         if timestep % config.save_freq < (config.num_steps * config.num_envs):
-            agent.save(str(checkpoint_path))
-            print(f"✓ Checkpoint saved to {checkpoint_path}")
+            agent.save(str(latest_checkpoint_path))
+            print(f"✓ Latest checkpoint saved to {latest_checkpoint_path}")
 
     # Final evaluation
     print("\n" + "=" * 80)
@@ -433,10 +433,11 @@ def main(config):
 
     print("=" * 80)
 
-    # Save final checkpoint
-    final_path = logdir / 'final.pt'
-    agent.save(str(final_path))
-    print(f"\n✓ Training complete! Final model saved to {final_path}")
+    # Save final latest checkpoint
+    agent.save(str(latest_checkpoint_path))
+    print(f"\n✓ Training complete!")
+    print(f"  Latest checkpoint: {latest_checkpoint_path}")
+    print(f"  Best checkpoint: {logdir / 'best.pt'} (return: {best_eval_return:.2f})")
 
     # Cleanup
     vec_env.close()
