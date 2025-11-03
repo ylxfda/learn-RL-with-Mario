@@ -14,7 +14,7 @@ dependencies = [
     "opencv-contrib-python>=4.5.5",
     "imageio>=2.37.0",
     "requests>=2.31.0",
-    "moviepy>=1.0.3",
+    "moviepy==1.0.3",
 ]
 
 [tool.hatch.build.targets.wheel]
