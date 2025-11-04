@@ -23,6 +23,11 @@ Paper Reference: "Proximal Policy Optimization Algorithms" (Schulman et al., 201
 https://arxiv.org/abs/1707.06347
 """
 
+# Suppress deprecation warnings
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="moviepy")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="gym")
+
 import argparse
 import pathlib
 import time

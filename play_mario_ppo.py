@@ -14,6 +14,11 @@ Usage:
     python play_mario_ppo.py --logdir logdir/mario_ppo --stochastic
 """
 
+# Suppress deprecation warnings
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="moviepy")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="gym")
+
 import argparse
 import pathlib
 import sys

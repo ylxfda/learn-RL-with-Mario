@@ -24,6 +24,11 @@ Paper Reference: "Mastering Diverse Domains through World Models" (Hafner et al.
 https://arxiv.org/abs/2301.04104
 """
 
+# Suppress deprecation warnings
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="moviepy")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="gym")
+
 import argparse
 import collections
 import pathlib

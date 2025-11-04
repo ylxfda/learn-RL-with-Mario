@@ -7,6 +7,11 @@ Usage:
     python play_mario.py --logdir logdir/mario --episodes 5
 """
 
+# Suppress deprecation warnings
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="moviepy")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="gym")
+
 import argparse
 import pathlib
 import torch
