@@ -1,32 +1,6 @@
 {
     "version": "0.2.0",
     "configurations": [
-        {
-            "name": "Train Mario (defaults)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/train_mario.py",
-            "console": "integratedTerminal",
-            "args": [
-                "--configs",
-                "defaults",
-                "--logdir",
-                "logdir/mario-debug/"
-            ],
-            "cwd": "${workspaceFolder}",
-            "env": {},
-            "justMyCode": false,
-            "python": "${workspaceFolder}/.venv/bin/python"
-        },
-        {
-            "name": "Python: Current File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}",
-            "justMyCode": false,
-            "python": "${workspaceFolder}/.venv/bin/python"
-        }
+        
     ]
 }
