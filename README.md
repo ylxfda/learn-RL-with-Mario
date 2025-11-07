@@ -1,10 +1,18 @@
 # 🧠 Learn Reinforcement Learning with Mario
 
+<p align="center">
+  <img src="assets/wbx06.png" alt="Project hero illustration" width="800"/>
+  <br>
+  <em>Project hero illustration</em>
+</p>
+
 Welcome to **Learn Reinforcement Learning with Mario** — an educational repository that teaches you modern **reinforcement learning (RL)** through hands-on PyTorch implementations, using Super Mario as your guide.
 
 **What you'll find here:**
-- ✅ **PPO (Proximal Policy Optimization)** — learns from real experience
-- ✅ **DreamerV3** — learns by building a world model and "dreaming"
+- 📖 **A brief RL introduction** — question-driven guide from REINFORCE to modern world models
+- 🤖 **Two RL algorithms:**
+  - **PPO (Proximal Policy Optimization)** — learns from real experience
+  - **DreamerV3** — learns by building a world model and "dreaming"
 
 **Who is this for?**
 Anyone curious about how AI agents learn to play games. No RL background required — we'll start from the basics and build up to state-of-the-art algorithms.
@@ -13,78 +21,26 @@ Anyone curious about how AI agents learn to play games. No RL background require
 
 ## 🎯 Learning Philosophy
 
-This README is structured around **questions**, not just answers. Each section asks:
+We believe that **curiosity is the best teacher**.
 
-> 🤔 **"What problem are we trying to solve?"**
+Perhaps you're here because you wondered: *"How do computers learn to play games?"* You've heard it's through something called **reinforcement learning**, but what exactly is that? And with so many RL algorithms out there—PPO and DreamerV3 were mentioned above—what makes them different?
 
-By understanding the *why* behind each algorithm, you'll gain intuition that goes beyond memorizing formulas.
+👉 [Read: A Brief Introduction to Reinforcement Learning](A-Brief-Introduction-to-RL.md)
 
----
+This question-driven guide walks you through the *why* behind each algorithm. You'll understand not just the formulas, but the **problems** each method solves and the **insights** that led to the next breakthrough. This guide is far from a comprehensive RL course, but it should be able to give you a quick overview of different RL algorithms and have you prepared to the next step.
 
-## 🎮 Why Mario?
+Once you grasp the concepts, the next question probably is how theoretical ideas transform into working code? So far two RL algorithms have been implemented:
+- **PPO** implementation in [`PPO/`](PPO/)
+- **DreamerV3** implementation in [`dreamerv3/`](dreamerv3/)
 
-Before diving into algorithms, let's establish *why* Mario is the perfect teacher for RL.
-
-**Mario's world has all the core elements of reinforcement learning:**
-- **States**: What Mario sees (enemies, blocks, pipes)
-- **Actions**: What Mario can do (move, jump, run)
-- **Rewards**: What Mario gets (coins, defeating enemies, reaching the flag)
-- **Goal**: Mario must learn a strategy that maximizes long-term success
-
-This is exactly what reinforcement learning is about.
-
----
-
-## 🧩 What Is Reinforcement Learning?
-
-**The Core Idea:**
-Reinforcement learning teaches an agent to make decisions through trial and error, guided by rewards.
-
-**The Loop:**
-At each time step \( t \):
-
-1. Agent observes **state** \( s_t \)
-2. Agent selects **action** \( a_t \) based on its policy \( \pi_\theta(a|s) \)
-3. Environment returns **reward** \( r_t \) and next **state** \( s_{t+1} \)
-4. Agent updates its policy to get better rewards in the future
-
-**The Objective:**
-Learn a policy \( \pi_\theta \) that maximizes **expected cumulative reward**:
-
-$$
-J(\theta) = \mathbb{E}_{\pi_\theta} \left[ \sum_{t=0}^{\infty} \gamma^t r_t \right] \tag{1}
-$$
-
-where \( \gamma \in [0,1) \) is the discount factor (future rewards matter less than immediate ones).
-
----
-
-## 📚 Learning About RL Algorithms
-
-**Want to understand the evolution from simple policy gradients to world models?**
-
-We've prepared a comprehensive, question-driven introduction that traces the journey from REINFORCE to PPO and DreamerV3. No prior RL knowledge required!
-
-👉 **[Read: A Brief Introduction to Reinforcement Learning](A-Brief-Introduction-to-RL.md)**
-
-This guide covers:
-- REINFORCE and the basics of policy gradients
-- Baselines and advantage functions
-- Actor-Critic methods
-- A2C/A3C parallel learning
-- TRPO's trust region constraints
-- PPO's clipped objective
-- DreamerV3's world models and imagination
-- Complete references and further reading
-
-Each section asks **"What problem are we solving?"** and shows how each algorithm builds on previous insights.
+As most variable and class naming follows the conventions from the original papers with detailed comments, the code is pretty much self-explanatory if you've read the papers.
 
 ---
 
 ## 🧰 Repository Structure
 
 ```
-dreamerv3-torch-mario-claude/
+learn/
 │
 ├── PPO/
 │   ├── ppo_agent.py          # PPO agent implementation
@@ -251,7 +207,7 @@ Both training scripts log:
 
 ### PPO Implementation Highlights
 
-- **Generalized Advantage Estimation (GAE)**: Used for computing advantages with \( \lambda = 0.95 \)
+- **Generalized Advantage Estimation (GAE)**: Used for computing advantages with $\lambda = 0.95$
 - **Multiple epochs**: Reuses each batch of data for 4-10 gradient steps
 - **Mini-batch updates**: Splits experience into smaller batches for stability
 - **Entropy bonus**: Encourages exploration in early training
@@ -261,7 +217,7 @@ Both training scripts log:
 - **RSSM (Recurrent State Space Model)**: Uses both deterministic and stochastic latent states
 - **Free bits**: Prevents posterior collapse by ensuring KL divergence doesn't go too low
 - **Symlog predictions**: Predicts rewards in symlog space for better numerical stability
-- **\( \lambda \)-returns**: Uses exponential averaging for target values
+- **$\lambda$-returns**: Uses exponential averaging for target values
 
 ---
 

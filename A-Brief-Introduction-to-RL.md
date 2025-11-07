@@ -6,6 +6,8 @@ This document provides a self-contained introduction to reinforcement learning, 
 
 ## 📋 Table of Contents
 
+- [What Is Reinforcement Learning?](#-what-is-reinforcement-learning)
+- [Why Mario?](#-why-mario)
 - [The Evolution of RL Algorithms](#the-evolution-of-rl-algorithms-a-question-driven-journey)
   - [1️⃣ REINFORCE](#1️⃣-reinforce-can-we-learn-directly-from-rewards)
   - [2️⃣ Baseline](#2️⃣-baseline-how-do-we-reduce-the-noise)
@@ -16,6 +18,43 @@ This document provides a self-contained introduction to reinforcement learning, 
   - [7️⃣ DreamerV3](#7️⃣-dreamerv3-can-we-learn-by-dreaming)
 - [Summary Table](#-summary-the-journey-from-reinforce-to-dreamerv3)
 - [References](#-references-and-further-reading)
+
+---
+
+## 🧩 What Is Reinforcement Learning?
+
+**The Core Idea:**
+Reinforcement learning teaches an agent to make decisions through trial and error, guided by rewards.
+
+**The Loop:**
+At each time step $t$:
+
+1. Agent observes **state** $s_t$
+2. Agent selects **action** $a_t$ based on its policy $\pi_\theta(a|s)$
+3. Environment returns **reward** $r_t$ and next **state** $s_{t+1}$
+4. Agent updates its policy to get better rewards in the future
+
+**The Objective:**
+Learn a policy $\pi_\theta$ that maximizes **expected cumulative reward**:
+
+$$
+J(\theta) = \mathbb{E}_{\pi_\theta} \left[ \sum_{t=0}^{\infty} \gamma^t r_t \right] \tag{1}
+$$
+
+where $\gamma \in [0,1)$ is the discount factor (future rewards matter less than immediate ones).
+
+---
+
+## 🎮 Why Mario?
+
+Mario is the perfect playground for learning RL because his world contains all the essential elements:
+
+- **States**: What Mario observes (enemies, blocks, pipes, terrain)
+- **Actions**: What Mario can do (move left/right, jump, run, crouch)
+- **Rewards**: What Mario receives (coins, points for defeating enemies, reaching the flag)
+- **Goal**: Learn a strategy that maximizes long-term success
+
+This simple yet rich environment lets you focus on understanding RL algorithms without getting lost in complex domain details.
 
 ---
 
@@ -31,7 +70,7 @@ Let's trace the path from simple policy gradient methods to modern world models.
 What if Mario just tries random actions, and after each episode, we make actions that led to good outcomes more likely?
 
 **How it works:**
-After completing an episode, compute the total return \( G_t = \sum_{k=t}^{T} \gamma^{k-t} r_k \) from each time step, then update:
+After completing an episode, compute the total return $G_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$ from each time step, then update:
 
 $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}[\nabla_\theta \log \pi_\theta(a_t|s_t) \, G_t] \tag{1}
@@ -58,14 +97,14 @@ Mario tries jumping randomly. If he survives longer in one episode, he reinforce
 Absolute rewards don't matter — what matters is whether we did *better or worse than usual*.
 
 **The Fix:**
-Subtract a baseline \( b(s_t) \) (typically the value function \( V^\pi(s_t) \)) from the return:
+Subtract a baseline $b(s_t)$ (typically the value function $V^\pi(s_t)$) from the return:
 
 $$
 \nabla_\theta J(\theta) = \mathbb{E}[\nabla_\theta \log \pi_\theta(a_t|s_t) \, (G_t - b(s_t))] \tag{2}
 $$
 
 **Advantage Function:**
-Define \( A_t = G_t - V^\pi(s_t) \) as the **advantage** — how much better this action was compared to average.
+Define $A_t = G_t - V^\pi(s_t)$ as the **advantage** — how much better this action was compared to average.
 
 **Mario's Experience:**
 If Mario usually scores 500 points but this time scores 800, he knows this run was particularly good. He focuses on *what he did differently*, not the absolute score.
@@ -83,14 +122,14 @@ Mario still has to wait until the episode ends to learn anything.
 ### 3️⃣ Actor-Critic: *Can we learn online, step-by-step?*
 
 **The Insight:**
-Instead of waiting for the full episode return \( G_t \), estimate it using a **critic** network.
+Instead of waiting for the full episode return $G_t$, estimate it using a **critic** network.
 
 **The Architecture:**
-- **Actor** \( \pi_\theta(a|s) \): Chooses actions
-- **Critic** \( V_\phi(s) \): Estimates how good states are
+- **Actor** $\pi_\theta(a|s)$: Chooses actions
+- **Critic** $V_\phi(s)$: Estimates how good states are
 
 **Temporal-Difference (TD) Advantage:**
-Replace \( G_t \) with a one-step estimate:
+Replace $G_t$ with a one-step estimate:
 
 $$
 A_t = r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t) \tag{3}
@@ -139,7 +178,7 @@ Even with these improvements, the policy can still make **sudden, catastrophic c
 A large policy update can make performance collapse. Imagine Mario suddenly changing from "jump when you see an enemy" to "never jump."
 
 **The Solution:**
-Add a **trust region constraint** — restrict how much the new policy \( \pi_\theta \) can differ from the old policy \( \pi_{\theta_{\text{old}}} \):
+Add a **trust region constraint** — restrict how much the new policy $\pi_\theta$ can differ from the old policy $\pi_{\theta_{\text{old}}}$:
 
 $$
 \begin{aligned}
@@ -148,7 +187,7 @@ $$
 \end{aligned} \tag{4}
 $$
 
-where \( \text{KL}(\cdot \| \cdot) \) is the Kullback-Leibler divergence measuring policy difference.
+where $\text{KL}(\cdot \| \cdot)$ is the Kullback-Leibler divergence measuring policy difference.
 
 **Mario's Experience:**
 Mario takes small, safe steps in learning. He doesn't radically change his jumping strategy overnight.
@@ -181,7 +220,7 @@ r_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)} \ta
 $$
 
 **What the Clip Does:**
-- If \( r_t(\theta) \) moves outside \( [1-\epsilon, 1+\epsilon] \) (typically \( \epsilon=0.2 \)), we stop the gradient
+- If $r_t(\theta)$ moves outside $[1-\epsilon, 1+\epsilon]$ (typically $\epsilon=0.2$), we stop the gradient
 - This prevents large policy changes without expensive second-order computations
 
 **Mario's Experience:**
@@ -222,14 +261,14 @@ This is called **model-based reinforcement learning**.
 **1. World Model**
 Learns to simulate the game environment in a compact **latent space**:
 
-- **Encoder** \( q_\phi(z_t | o_t) \): Compress observation \( o_t \) into latent state \( z_t \)
-- **Dynamics** \( p_\phi(z_{t+1} | z_t, a_t) \): Predict next latent state given action
-- **Decoder** \( p_\phi(o_t | z_t) \): Reconstruct observation from latent state
-- **Reward Predictor** \( p_\phi(r_t | z_t) \): Predict reward
-- **Continue Predictor** \( p_\phi(c_t | z_t) \): Predict if episode continues
+- **Encoder** $q_\phi(z_t | o_t)$: Compress observation $o_t$ into latent state $z_t$
+- **Dynamics** $p_\phi(z_{t+1} | z_t, a_t)$: Predict next latent state given action
+- **Decoder** $p_\phi(o_t | z_t)$: Reconstruct observation from latent state
+- **Reward Predictor** $p_\phi(r_t | z_t)$: Predict reward
+- **Continue Predictor** $p_\phi(c_t | z_t)$: Predict if episode continues
 
 **2. Imagination Rollouts**
-Starting from a real latent state \( z_t \), use the world model to generate **imaginary trajectories**:
+Starting from a real latent state $z_t$, use the world model to generate **imaginary trajectories**:
 
 $$
 z_t \xrightarrow{a_t} z_{t+1} \xrightarrow{a_{t+1}} z_{t+2} \xrightarrow{a_{t+2}} \cdots
@@ -238,7 +277,7 @@ $$
 These trajectories are generated entirely inside the model — no real environment interaction needed.
 
 **3. Actor-Critic in Latent Space**
-Train the policy \( \pi_\theta(a|z) \) and value function \( V_\psi(z) \) on imagined trajectories:
+Train the policy $\pi_\theta(a|z)$ and value function $V_\psi(z)$ on imagined trajectories:
 
 - **Actor objective**: Maximize imagined returns
 - **Critic objective**: Accurately predict imagined values
