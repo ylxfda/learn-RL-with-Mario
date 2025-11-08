@@ -79,11 +79,42 @@ learn-rl-with-mario/
 
 ## ⚙️ Getting Started
 
+### Installation
 
+The recommended way to set up the environment is using [uv](https://docs.astral.sh/uv/).
 
-Once the enviroment is setup, you can start with either of the algorithms by reading the README file under the subdirectory.
+**Option 1: Using uv (Recommended)**
 
-Happy learning, and may your Mario reach the flag! 🚩
+```bash
+# Install uv if you haven't already
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone the repository
+git clone https://github.com/yourusername/learn-rl-with-mario.git
+cd learn-rl-with-mario
+
+# Create a virtual environment and install dependencies
+uv sync
+```
+
+**Option 2: Using pip**
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/learn-rl-with-mario.git
+cd learn-rl-with-mario
+
+# Create a virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+Once the environment is set up, you can start with either of the algorithm by following the README file under the subdirectory.
+
+Happy learning, and may your Mario reach the flag! 🚩 
 
 ## 📜 License
 
