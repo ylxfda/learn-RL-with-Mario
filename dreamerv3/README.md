@@ -1,6 +1,4 @@
-# DreamerV3 for Super Mario Bros - Educational Implementation
-
-A clean, well-documented implementation of DreamerV3 for learning to play Super Mario Bros. This codebase is designed for educational purposes, prioritizing readability and understanding over performance.
+# DreamerV3 for Super Mario Bros
 
 ## Paper Reference
 
@@ -18,19 +16,11 @@ DreamerV3 is a model-based reinforcement learning algorithm that:
 
 This implementation focuses on Super Mario Bros stage 1-1 as a single, concrete example.
 
-## Key Features
-
-- ✅ **Extensively Documented**: Every function includes type hints, docstrings, and paper references
-- ✅ **Paper-Aligned Naming**: Variable names match the DreamerV3 paper (e.g., `stoch`, `deter`, `h_t`, `z_t`)
-- ✅ **Modular Architecture**: Clear separation of concerns (world model, actor-critic, networks)
-- ✅ **Educational Focus**: Prioritizes clarity over optimization
-- ✅ **Single Environment**: Simplified to Mario 1-1 for easier understanding
-
 ## Architecture
 
 ### 1. World Model (`dreamerv3/world_model.py`)
 
-The world model learns environment dynamics from experience:
+The world model learns environment dynamics from experience real Mario game enviroment:
 
 ```
 Observation → Encoder → Embedding
@@ -158,54 +148,6 @@ Input: 1536-dim features
 - Used for actor, critic, reward, continuation
 - Architecture: `Input → Linear + LayerNorm + SiLU → ... → Output`
 - Supports various output distributions (categorical, discretized, Bernoulli)
-
-## File Structure
-
-```
-dreamerv3-torch-mario-claude/
-├── dreamerv3/
-│   ├── __init__.py
-│   ├── world_model.py          # World model (encoder, RSSM, decoder, heads)
-│   ├── actor_critic.py         # Actor-critic learning
-│   ├── networks/
-│   │   ├── __init__.py
-│   │   ├── rssm.py             # Recurrent State Space Model
-│   │   └── encoder_decoder.py # CNN encoder/decoder and MLP
-│   └── utils/
-│       ├── __init__.py
-│       ├── distributions.py    # Custom probability distributions
-│       └── tools.py            # Utility functions
-├── envs/
-│   ├── __init__.py
-│   └── mario.py                # Mario environment wrapper
-├── configs.yaml                # Hyperparameters
-├── train_mario.py              # Main training script
-└── README.md                   # This file
-```
-
-## Installation
-
-```bash
-# Clone the repository
-cd /home/yl/Projects/dreamerv3-torch-mario-claude
-
-# The virtual environment has been copied
-# Activate it:
-source .venv/bin/activate
-
-# Install dependencies (if needed)
-pip install -r requirements.txt
-```
-
-**Dependencies:**
-- Python 3.8+
-- PyTorch 2.0+
-- gym-super-mario-bros
-- nes-py
-- numpy
-- tensorboard
-- ruamel.yaml
-- opencv-python (for image resizing)
 
 ## Usage
 

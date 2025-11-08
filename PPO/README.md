@@ -1,6 +1,6 @@
 # PPO Implementation Summary
 
-This document summarizes the PPO (Proximal Policy Optimization) implementation added to the Super Mario Bros training repository.
+This document summarizes the PPO (Proximal Policy Optimization) implementation.
 
 ## Overview
 
