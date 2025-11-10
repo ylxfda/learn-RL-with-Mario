@@ -2,9 +2,23 @@
 Play Super Mario Bros with Trained DreamerV3 Agent
 
 This script loads a trained model and plays Mario in real-time with visualization.
+Optionally save each episode as an animated GIF.
+
+By default, uses stochastic action sampling for more varied behavior.
+Use --action-mode for deterministic (mode) action selection.
 
 Usage:
+    # Basic usage (stochastic actions by default)
     python play_mario.py --logdir logdir/mario --episodes 5
+
+    # Use deterministic actions
+    python play_mario.py --logdir logdir/mario --episodes 5 --action-mode
+
+    # Save episodes as GIFs
+    python play_mario.py --logdir logdir/mario --episodes 5 --save-gif
+
+    # Customize GIF settings
+    python play_mario.py --logdir logdir/mario --episodes 5 --save-gif --gif-fps 30 --gif-dir ./my_gifs
 """
 
 # Suppress deprecation warnings
@@ -17,6 +31,8 @@ import pathlib
 import torch
 import numpy as np
 from ruamel.yaml import YAML
+from PIL import Image
+import time
 
 from train_mario_dreamer import DreamerAgent
 from envs.mario import make_mario_env
@@ -30,15 +46,62 @@ class DemoConfig:
             setattr(self, key, value)
 
 
+def save_episode_gif(
+    frames: list,
+    save_path: pathlib.Path,
+    duration: int = 50,
+    loop: int = 0
+):
+    """
+    Save a list of frames as an animated GIF
+
+    Args:
+        frames: List of numpy arrays (H, W, C) representing RGB frames
+        save_path: Path where to save the GIF file
+        duration: Duration of each frame in milliseconds (default: 50ms = 20 FPS)
+        loop: Number of loops (0 = infinite loop, default: 0)
+    """
+    if not frames:
+        print(f"Warning: No frames to save for {save_path}")
+        return
+
+    # Convert numpy arrays to PIL Images
+    pil_frames = []
+    for frame in frames:
+        # Ensure frame is uint8
+        if frame.dtype != np.uint8:
+            frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
+
+        # Convert to PIL Image
+        pil_frame = Image.fromarray(frame)
+        pil_frames.append(pil_frame)
+
+    # Save as animated GIF
+    pil_frames[0].save(
+        save_path,
+        save_all=True,
+        append_images=pil_frames[1:],
+        duration=duration,
+        loop=loop,
+        optimize=False  # Set to True to reduce file size (but slower)
+    )
+
+    print(f"Saved GIF with {len(frames)} frames to: {save_path}")
+
+
 def play_mario(
     logdir: str,
     num_episodes: int = 5,
     use_mode_for_z: bool = True,
-    use_mode_for_action: bool = True,
+    use_mode_for_action: bool = False,
     render: bool = True,
     verbose: bool = True,
     frame_delay: float = 0.02,
-    use_best: bool = True
+    use_best: bool = True,
+    save_gif: bool = False,
+    gif_dir: str = None,
+    gif_fps: int = 20,
+    max_episode_steps: int = 2000
 ):
     """
     Play Mario with trained agent
@@ -47,13 +110,33 @@ def play_mario(
         logdir: Directory containing trained model
         num_episodes: Number of episodes to play
         use_mode_for_z: Use mode (vs sample) for z (latent state)
-        use_mode_for_action: Use mode (vs sample) for action
+        use_mode_for_action: Use mode (vs sample) for action (default: False = sample/stochastic)
         render: Whether to render the game window
         verbose: Print detailed info
         frame_delay: Delay in seconds between frames (0.02 = ~50 FPS, 0.05 = ~20 FPS)
         use_best: Use best.pt checkpoint (default: True, can use latest.pt instead)
+        save_gif: Save each episode as an animated GIF (default: False)
+        gif_dir: Directory to save GIF files (default: logdir/gifs)
+        gif_fps: Frames per second for GIF animation (default: 20)
+        max_episode_steps: Maximum steps per episode before timeout (default: 2000)
     """
     logdir = pathlib.Path(logdir).expanduser()
+
+    # Setup GIF saving directory
+    if save_gif:
+        if gif_dir is None:
+            gif_dir = logdir / "gifs"
+        else:
+            gif_dir = pathlib.Path(gif_dir).expanduser()
+
+        gif_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create timestamped subdirectory for this run
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        gif_run_dir = gif_dir / f"run_{timestamp}"
+        gif_run_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        gif_run_dir = None
 
     if verbose:
         print("=" * 60)
@@ -61,6 +144,8 @@ def play_mario(
         print(f"Episodes: {num_episodes}")
         print(f"z strategy: {'mode (deterministic)' if use_mode_for_z else 'sample (stochastic)'}")
         print(f"action strategy: {'mode (deterministic)' if use_mode_for_action else 'sample (stochastic)'}")
+        if save_gif:
+            print(f"Saving GIFs: {gif_run_dir} ({gif_fps} FPS)")
         print("=" * 60)
 
     # Load configuration
@@ -167,7 +252,10 @@ def play_mario(
         total_reward = 0
         steps = 0
 
-        while not done:
+        # Collect frames for GIF
+        episode_frames = [] if save_gif else None
+
+        while not done and steps < max_episode_steps:
             # Prepare observation
             obs_dict = {k: np.expand_dims(v, 0) for k, v in obs.items()}
             obs_dict = agent._world_model.preprocess(obs_dict)
@@ -209,6 +297,27 @@ def play_mario(
             # Step environment
             obs, reward, done, info = env.step(int(action_np))
 
+            # Capture frame for GIF (use high-resolution rendered screen)
+            if save_gif:
+                # Get the high-resolution screen from the base environment
+                # This is the actual NES screen resolution (240x256) before downsampling
+                try:
+                    # Access the raw screen from gym-super-mario-bros
+                    raw_screen = env._env.unwrapped.screen
+                    if raw_screen is not None:
+                        # raw_screen is already uint8 RGB format
+                        episode_frames.append(raw_screen.copy())
+                except (AttributeError, KeyError):
+                    # Fallback to low-res observation if screen not available
+                    if 'image' in obs:
+                        frame = obs['image']
+                        if frame.dtype != np.uint8:
+                            if frame.max() <= 1.0:
+                                frame = (frame * 255).astype(np.uint8)
+                            else:
+                                frame = frame.astype(np.uint8)
+                        episode_frames.append(frame.copy())
+
             total_reward += reward
             steps += 1
 
@@ -220,15 +329,30 @@ def play_mario(
             if verbose and steps % 50 == 0:
                 print(f"  Step {steps}: reward={reward:.2f}, total={total_reward:.2f}")
 
+        # Check if episode was successful or timed out
+        flag_reached = info.get('flag_get', False) if 'flag_get' in info else False
+        timed_out = steps >= max_episode_steps
+
         episode_returns.append(total_reward)
         episode_lengths.append(steps)
 
+        # Save episode as GIF
+        if save_gif and episode_frames:
+            gif_filename = f"episode_{ep+1:03d}_reward_{total_reward:.0f}_steps_{steps}.gif"
+            gif_path = gif_run_dir / gif_filename
+            duration_ms = int(1000 / gif_fps)  # Convert FPS to milliseconds per frame
+            save_episode_gif(episode_frames, gif_path, duration=duration_ms, loop=0)
+
         if verbose:
             print(f"Episode {ep + 1} finished:")
+            if flag_reached:
+                print("  Status: SUCCESS ✓ - FLAG REACHED!")
+            elif timed_out:
+                print("  Status: TIMEOUT ⏱")
+            else:
+                print("  Status: FAILED ✗")
             print(f"  Total Reward: {total_reward:.2f}")
             print(f"  Length: {steps} steps")
-            if 'flag_get' in info and info['flag_get']:
-                print("  🎉 FLAG REACHED!")
 
     env.close()
 
@@ -274,9 +398,9 @@ def main():
         help='Use sample (instead of mode) for latent state z'
     )
     parser.add_argument(
-        '--action-sample',
+        '--action-mode',
         action='store_true',
-        help='Use sample (instead of mode) for action selection'
+        help='Use mode (instead of sample) for action selection'
     )
     parser.add_argument(
         '--no-render',
@@ -292,13 +416,36 @@ def main():
         '--frame-delay',
         type=float,
         default=0.015,
-        help='Delay between frames in seconds (default: 0.02 = ~50 FPS)'
+        help='Delay between frames in seconds (default: 0.015 = ~67 FPS)'
     )
     parser.add_argument(
         '--latest',
         action='store_false',
         dest='best',
         help='Use latest.pt checkpoint instead of best.pt (default: use best.pt)'
+    )
+    parser.add_argument(
+        '--save-gif',
+        action='store_true',
+        help='Save each episode as an animated GIF (default: False)'
+    )
+    parser.add_argument(
+        '--gif-dir',
+        type=str,
+        default=None,
+        help='Directory to save GIF files (default: logdir/gifs)'
+    )
+    parser.add_argument(
+        '--gif-fps',
+        type=int,
+        default=20,
+        help='Frames per second for GIF animation (default: 20)'
+    )
+    parser.add_argument(
+        '--max-episode-steps',
+        type=int,
+        default=2000,
+        help='Maximum steps per episode before timeout (default: 2000)'
     )
 
     args = parser.parse_args()
@@ -307,11 +454,15 @@ def main():
         logdir=args.logdir,
         num_episodes=args.episodes,
         use_mode_for_z=not args.z_sample,
-        use_mode_for_action=not args.action_sample,
+        use_mode_for_action=args.action_mode,
         render=not args.no_render,
         verbose=not args.quiet,
         frame_delay=args.frame_delay,
-        use_best=args.best
+        use_best=args.best,
+        save_gif=args.save_gif,
+        gif_dir=args.gif_dir,
+        gif_fps=args.gif_fps,
+        max_episode_steps=args.max_episode_steps
     )
 
 
