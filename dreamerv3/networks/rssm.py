@@ -449,7 +449,11 @@ class RSSM(nn.Module):
 
         # Roll out dynamics
         if is_first is not None:
-            prior = tools.static_scan(self.img_step, [action, is_first], state)
+            # Create a wrapper function to correctly pass is_first as keyword argument
+            def step_with_reset(prev_state, prev_action, reset_flag):
+                return self.img_step(prev_state, prev_action, sample=True, is_first=reset_flag)
+
+            prior = tools.static_scan(step_with_reset, [action, is_first], state)
         else:
             prior = tools.static_scan(self.img_step, [action], state)
         prior = prior[0]

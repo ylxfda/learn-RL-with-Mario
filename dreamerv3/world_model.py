@@ -385,14 +385,15 @@ class WorldModel(nn.Module):
         init = {k: v[:, -1] for k, v in states.items()}
 
         # Imagine future without observations (open-loop prediction)
-        # FIXED: Use action[4:] to maintain time alignment
+        # FIXED: Use action[4:-1] to maintain time alignment
         # The last posterior state (at index 4) was computed using obs[4] and action[4]
         # So next prediction should use action[4] to predict obs[5]
         # Also pass is_first flags to handle episode boundaries correctly
+        # Note: action[4:-1] and is_first[5:] must have the same length
         prior = self.dynamics.imagine_with_action(
-            data["action"][:6, 4:],
+            data["action"][:6, 4:-1],     # Exclude last action to match is_first length
             init,
-            data["is_first"][:6, 5:]  # is_first for steps 5 onwards
+            data["is_first"][:6, 5:]      # is_first for steps 5 onwards
         )
 
         # Decode imagined states
@@ -409,7 +410,9 @@ class WorldModel(nn.Module):
         # First 5 steps: reconstruction, remaining: imagination
         # Skip first imagined frame as it corresponds to step 5 (already have reconstruction)
         model = torch.cat([recon[:, :5], openl[:, 1:]], dim=1)
-        truth = data["image"][:6]
+
+        # Match truth length to model (exclude last frame since we don't predict it)
+        truth = data["image"][:6, :-1]
 
         # Compute prediction error (shifted to [0, 1] range)
         error = (model - truth + 1.0) / 2.0
