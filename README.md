@@ -125,14 +125,14 @@ Here are examples of both algorithms successfully completing Super Mario Bros St
 <table align="center">
   <tr>
     <td align="center">
-      <img src="logdir/mario-dreamer/eval_gif/run_20251110_133809/episode_002_reward_4096_steps_312.gif" alt="DreamerV3 playing Mario" width="400"/>
+      <img src="assets/episode_002_reward_4096_steps_312.gif" alt="DreamerV3 playing Mario" width="400"/>
       <br>
       <strong>DreamerV3</strong>
       <br>
       <em>Reward: 4096 | Steps: 312</em>
     </td>
     <td align="center">
-      <img src="logdir/mario-ppo/eval_gif/run_20251110_140125/episode_002_reward_4093_steps_283.gif" alt="PPO playing Mario" width="400"/>
+      <img src="assets/episode_002_reward_4093_steps_283.gif" alt="PPO playing Mario" width="400"/>
       <br>
       <strong>PPO</strong>
       <br>
