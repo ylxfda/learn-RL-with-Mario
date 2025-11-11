@@ -10,7 +10,7 @@ PPO has been successfully implemented alongside the existing DreamerV3 algorithm
 
 ### New Directory Structure
 ```
-dreamerv3-torch-mario-claude/
+learn-RL-with-Mario/
 ├── PPO/                              # NEW: PPO algorithm implementation
 │   ├── __init__.py                   # Module initialization
 │   ├── networks.py                   # Actor and Critic networks
