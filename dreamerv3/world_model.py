@@ -357,8 +357,8 @@ class WorldModel(nn.Module):
             data: Batch of experience
 
         Returns:
-            Video tensor: (batch_size, time_steps, height, width*3, channels)
-            The width is tripled to show [truth | model | error] side-by-side
+            Video tensor: (batch_size, time_steps, height*3, width, channels)
+            The height is tripled to show [truth | model | error] stacked vertically
         """
         data = self.preprocess(data)
         embed = self.encoder(data)
@@ -385,9 +385,14 @@ class WorldModel(nn.Module):
         init = {k: v[:, -1] for k, v in states.items()}
 
         # Imagine future without observations (open-loop prediction)
+        # FIXED: Use action[4:] to maintain time alignment
+        # The last posterior state (at index 4) was computed using obs[4] and action[4]
+        # So next prediction should use action[4] to predict obs[5]
+        # Also pass is_first flags to handle episode boundaries correctly
         prior = self.dynamics.imagine_with_action(
-            data["action"][:6, 5:],
-            init
+            data["action"][:6, 4:],
+            init,
+            data["is_first"][:6, 5:]  # is_first for steps 5 onwards
         )
 
         # Decode imagined states
@@ -402,13 +407,14 @@ class WorldModel(nn.Module):
 
         # Combine posterior reconstruction and prior imagination
         # First 5 steps: reconstruction, remaining: imagination
-        model = torch.cat([recon[:, :5], openl], dim=1)
+        # Skip first imagined frame as it corresponds to step 5 (already have reconstruction)
+        model = torch.cat([recon[:, :5], openl[:, 1:]], dim=1)
         truth = data["image"][:6]
 
         # Compute prediction error (shifted to [0, 1] range)
         error = (model - truth + 1.0) / 2.0
 
-        # Concatenate horizontally: [truth | model | error]
+        # Concatenate vertically: [truth | model | error] (stacked top to bottom)
         return torch.cat([truth, model, error], dim=2)
 
 

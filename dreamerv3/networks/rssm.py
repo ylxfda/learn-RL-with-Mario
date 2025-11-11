@@ -344,7 +344,8 @@ class RSSM(nn.Module):
         self,
         prev_state: Dict[str, torch.Tensor],
         prev_action: torch.Tensor,
-        sample: bool = True
+        sample: bool = True,
+        is_first: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
         """
         Imagination step: predict next state without observation (prior)
@@ -359,10 +360,31 @@ class RSSM(nn.Module):
             prev_state: Previous state dictionary with 'stoch' and 'deter'
             prev_action: Previous action, shape (batch_size, action_dim)
             sample: Whether to sample or use mode
+            is_first: Optional episode start flag, shape (batch_size,)
+                      If provided, resets states where is_first=True
 
         Returns:
             Prior state dictionary with updated 'deter', 'stoch', and distribution params
         """
+        # Handle episode resets if is_first is provided
+        if is_first is not None and torch.sum(is_first) > 0:
+            # Partial reset: reset only episodes that are starting
+            batch_size = is_first.shape[0]
+            is_first_float = is_first[:, None].float()  # Add dimension for broadcasting
+            prev_action = prev_action * (1.0 - is_first_float)
+
+            init_state = self.initial(batch_size)
+            for key, val in prev_state.items():
+                # Broadcast is_first to match value shape
+                is_first_broadcast = torch.reshape(
+                    is_first_float,
+                    is_first_float.shape + (1,) * (len(val.shape) - len(is_first_float.shape))
+                )
+                prev_state[key] = (
+                    val * (1.0 - is_first_broadcast) +
+                    init_state[key] * is_first_broadcast
+                )
+
         # Get previous stochastic state and flatten if discrete
         prev_stoch = prev_state["stoch"]
         if self._discrete_dim:
@@ -400,7 +422,8 @@ class RSSM(nn.Module):
     def imagine_with_action(
         self,
         action: torch.Tensor,
-        state: Dict[str, torch.Tensor]
+        state: Dict[str, torch.Tensor],
+        is_first: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
         """
         Imagine future states given a sequence of actions
@@ -411,6 +434,8 @@ class RSSM(nn.Module):
         Args:
             action: Action sequence, shape (batch_size, time_steps, action_dim)
             state: Initial state dictionary
+            is_first: Optional episode start flags, shape (batch_size, time_steps)
+                      If provided, resets states at episode boundaries
 
         Returns:
             Imagined state dictionary with time dimension
@@ -419,8 +444,14 @@ class RSSM(nn.Module):
         swap = lambda x: x.permute([1, 0] + list(range(2, len(x.shape))))
         action = swap(action)
 
+        if is_first is not None:
+            is_first = swap(is_first)
+
         # Roll out dynamics
-        prior = tools.static_scan(self.img_step, [action], state)
+        if is_first is not None:
+            prior = tools.static_scan(self.img_step, [action, is_first], state)
+        else:
+            prior = tools.static_scan(self.img_step, [action], state)
         prior = prior[0]
 
         # Transpose back to (batch_size, time_steps, ...)
