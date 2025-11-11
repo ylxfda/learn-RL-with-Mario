@@ -1,18 +1,149 @@
-# DreamerV3 Algorithm: Detailed Implementation Guide
+# DreamerV3 Algorithm: Usage Guide and Implementation Details
 
 **Paper Reference**: [Mastering Diverse Domains through World Models](https://arxiv.org/abs/2301.04104) (Hafner et al., 2023)
 
-This document provides a comprehensive guide to the DreamerV3 algorithm and its implementation in this codebase, using Super Mario Bros as a concrete example.
+This document provides both a practical usage guide for training and evaluating agents, as well as comprehensive implementation details of the DreamerV3 algorithm in this codebase, using Super Mario Bros as a concrete example.
 
 ---
 
 ## Table of Contents
 
-1. [Key Concepts and Notation](#1-key-concepts-and-notation)
-2. [Major Components](#2-major-components)
-3. [Loss Functions](#3-loss-functions)
-4. [Training Process](#4-training-process)
-5. [Implementation Tricks](#5-implementation-tricks)
+1. [Quick Start: Usage Guide](#quick-start-usage-guide)
+   - [Training the Agent](#1-training-the-agent)
+   - [Monitoring Training with TensorBoard](#2-monitoring-training-with-tensorboard)
+   - [Playing Mario with the Trained Model](#3-playing-mario-with-the-trained-model)
+2. [Key Concepts and Notation](#1-key-concepts-and-notation)
+3. [Major Components](#2-major-components)
+4. [Loss Functions](#3-loss-functions)
+5. [Training Process](#4-training-process)
+6. [Implementation Tricks](#5-implementation-tricks)
+
+---
+
+## Quick Start: Usage Guide
+
+### 1. Training the Agent
+
+**Basic Training (Standard Configuration):**
+```bash
+# Train with default hyperparameters
+python train_mario_dreamer.py --configs defaults
+```
+
+**GPU-Optimized Training (Recommended for Higher end GPUs):**
+
+If you have a GPU with 24GB+ VRAM and want to maximize training speed:
+```bash
+# Enable mixed precision (FP16) and larger batch sizes for better GPU utilization
+python train_mario_dreamer.py --configs defaults gpu_optimized
+```
+
+**What `gpu_optimized` does:**
+- **Mixed Precision (FP16)**: Reduces memory usage by ~50% and speeds up training by ~2x on tensor core GPUs
+- **Larger Batch Sizes**: Increases batch_size from 16→32 and batch_length from 64→80 to better utilize GPU parallelism
+- **More Training Steps**: Increases train_ratio from 512→768 for more gradient updates per environment step
+- **Expected Performance**: 60-80% GPU utilization (vs. 20-30% without optimization)
+
+**Other Training Options:**
+
+```bash
+# Debug mode (fast iteration for testing code changes)
+python train_mario_dreamer.py --configs defaults debug
+
+# Resume from checkpoint
+python train_mario_dreamer.py --logdir ./logdir/mario
+
+# Custom log directory
+python train_mario_dreamer.py --configs defaults --logdir ./my_experiments/mario_run1
+```
+
+**Training Progress:**
+- The agent will train for 400,000 steps (or 10,000 in debug mode)
+- Evaluation runs every 10,000 steps
+- Checkpoints are saved periodically in `logdir/mario/`
+
+---
+
+### 2. Monitoring Training with TensorBoard
+
+DreamerV3 logs extensive metrics and visualizations to TensorBoard. Launch it to monitor training in real-time:
+
+```bash
+# Start TensorBoard (point it to your log directory)
+tensorboard --logdir ./logdir/mario
+
+# Then open http://localhost:6006 in your browser
+```
+
+**Key Metrics to Monitor:**
+
+**Scalars Tab:**
+- `eval_return`: Episode return during evaluation (target: ~4000+ for completion)
+- `model_loss`: World model training loss (should decrease over time)
+- `actor_loss`: Policy loss (stabilizes after initial training)
+- `value_loss`: Critic loss (should decrease)
+- `kl_divergence`: KL between posterior and prior (typically 1-5)
+
+**Images Tab (Video Predictions):**
+
+One of the most insightful visualizations is the **open-loop video prediction** (`train_openl`), which shows how well the world model can predict future frames without seeing them:
+
+<p align="center">
+  <img src="../assets/imageData.gif" alt="Open-loop prediction visualization" width="600"/>
+</p>
+
+**Understanding the Animation:**
+- **Rows**: Different episodes/sequences from the batch (typically 4 rows shown)
+- **Columns**: Time progression (each column is a timestep)
+  - **First column**: Ground truth observation from replay buffer
+  - **Remaining columns**: Model's predictions rolling forward in imagination
+- **What to look for**:
+  - ✅ **Good predictions**: Imagined frames match Mario's actual movement and environment
+  - ❌ **Poor predictions**: Blurry frames, Mario disappearing, or physics violations
+  - As training progresses, predictions should become sharper and more accurate
+
+This visualization directly shows whether the world model has learned the game dynamics well enough for effective planning.
+
+---
+
+### 3. Playing Mario with the Trained Model
+
+Once training is complete (or even during training), you can watch your agent play:
+
+**Basic Usage:**
+```bash
+# Play 5 episodes using the trained model (stochastic sampling by default)
+python play_mario_dreamer.py --logdir logdir/mario --episodes 5
+```
+
+**Deterministic Mode:**
+```bash
+# Use deterministic actions (always pick the mode/most likely action)
+python play_mario_dreamer.py --logdir logdir/mario --episodes 5 --action-mode
+```
+
+**Save Episodes as GIFs:**
+```bash
+# Record episodes and save as animated GIFs
+python play_mario_dreamer.py --logdir logdir/mario --episodes 5 --save-gif
+
+# Customize GIF settings
+python play_mario_dreamer.py --logdir logdir/mario --episodes 5 --save-gif --gif-fps 30 --gif-dir ./my_gifs
+```
+
+**Options:**
+- `--logdir`: Directory containing the trained model checkpoint
+- `--episodes`: Number of episodes to play (default: 5)
+- `--action-mode`: Use deterministic actions instead of stochastic sampling
+- `--save-gif`: Save each episode as an animated GIF
+- `--gif-fps`: Frames per second for saved GIFs (default: 20)
+- `--gif-dir`: Directory to save GIF files (default: same as logdir)
+- `--use-best`: Load best checkpoint instead of latest (default: True)
+
+**What to Expect:**
+- The agent should be able to complete Stage 1-1 after ~100,000-200,000 training steps
+- Final reward should be around 4000-4100 (includes flag bonus of 1000)
+- Episode length typically 250-350 steps with action_repeat=4
 
 ---
 
