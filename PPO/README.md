@@ -198,28 +198,28 @@ PPO is an **on-policy** policy gradient method that learns directly from experie
 
 | Symbol | Dimension | Description | Mario Example |
 |--------|-----------|-------------|---------------|
-| **s_t** | (64, 64, 3) | State/observation (RGB image) at time t | Screenshot of Mario game (64×64 RGB) showing Mario, enemies, blocks |
-| **a_t** | (7,) | Action taken at time t (one-hot) | One of 7 discrete actions: NOOP, right, right+A, right+B, right+A+B, A (jump), left |
-| **r_t** | (1,) | Reward received at time t | Distance traveled + 1000 for flag - penalties for dying |
-| **done_t** | (1,) | Episode termination flag | 1 when Mario dies or reaches flag, 0 otherwise |
+| $s_t$ | (64, 64, 3) | State/observation (RGB image) at time t | Screenshot of Mario game (64×64 RGB) showing Mario, enemies, blocks |
+| $a_t$ | (7,) | Action taken at time t (one-hot) | One of 7 discrete actions: NOOP, right, right+A, right+B, right+A+B, A (jump), left |
+| $r_t$ | (1,) | Reward received at time t | Distance traveled + 1000 for flag - penalties for dying |
+| $\text{done}_t$ | (1,) | Episode termination flag | 1 when Mario dies or reaches flag, 0 otherwise |
 
 ### 1.2 Policy and Value Function
 
 | Symbol | Type | Description | Purpose |
 |--------|------|-------------|---------|
-| **π_θ(a\|s)** | Policy | Probability distribution over actions | Agent's policy parameterized by θ |
-| **V_φ(s)** | Value Function | Expected cumulative return from state s | Baseline for advantage estimation, parameterized by φ |
-| **A(s,a)** | Advantage | How much better action a is than average | A(s,a) = Q(s,a) - V(s) |
+| $\pi_\theta(a\|s)$ | Policy | Probability distribution over actions | Agent's policy parameterized by $\theta$ |
+| $V_\phi(s)$ | Value Function | Expected cumulative return from state s | Baseline for advantage estimation, parameterized by $\phi$ |
+| $A(s,a)$ | Advantage | How much better action a is than average | $A(s,a) = Q(s,a) - V(s)$ |
 
 ### 1.3 PPO-Specific Terms
 
 | Symbol | Description | Purpose |
 |--------|-------------|---------|
-| **π_old(a\|s)** | Old policy (before update) | Reference for computing probability ratio |
-| **r_t = π_θ(a\|s) / π_old(a\|s)** | Probability ratio | Measures how much policy changed |
-| **ε** | Clipping parameter (0.2) | Limits policy update magnitude |
-| **γ** | Discount factor (0.99) | Temporal discounting |
-| **λ** | GAE parameter (0.95) | Bias-variance tradeoff |
+| $\pi_{old}(a\|s)$ | Old policy (before update) | Reference for computing probability ratio |
+| $r_t = \frac{\pi_\theta(a\|s)}{\pi_{old}(a\|s)}$ | Probability ratio | Measures how much policy changed |
+| $\varepsilon$ | Clipping parameter (0.2) | Limits policy update magnitude |
+| $\gamma$ | Discount factor (0.99) | Temporal discounting |
+| $\lambda$ | GAE parameter (0.95) | Bias-variance tradeoff |
 
 ### 1.4 Time Convention
 
@@ -228,11 +228,11 @@ Throughout this document:
 - **t+1** denotes the next timestep
 
 **Example sequence in Mario:**
-1. At t=0: Mario is standing, observes initial screen → s_0
-2. Policy selects action: a_0 = "right" ~ π_θ(·|s_0)
-3. Environment steps: s_1, r_1 = env.step(a_0)
-4. Reward: r_1 = +1 for distance traveled
-5. Continue until done_t = 1
+1. At $t=0$: Mario is standing, observes initial screen → $s_0$
+2. Policy selects action: $a_0 = \text{"right"} \sim \pi_\theta(\cdot|s_0)$
+3. Environment steps: $s_1, r_1 = \text{env.step}(a_0)$
+4. Reward: $r_1 = +1$ for distance traveled
+5. Continue until $\text{done}_t = 1$
 
 ---
 
@@ -243,22 +243,29 @@ PPO consists of three main components: the policy network (actor), the value net
 ### 2.1 Actor (Policy Network)
 
 **Mathematical Definition:**
-```
-π_θ(a|s) = Categorical(logits_θ(s))
-```
+
+$$\pi_\theta(a|s) = \text{Categorical}(\text{logits}_\theta(s))$$
 
 **Purpose:** Maps states to action probabilities.
 
 **Architecture:** CNN + MLP
+
 ```
-Input: s_t ∈ ℝ^(64×64×3)
-  ↓ Conv2d(32, 8×8, stride=4) + ReLU        → (16×16×32)
-  ↓ Conv2d(64, 4×4, stride=2) + ReLU        → (8×8×64)
-  ↓ Conv2d(64, 3×3, stride=1) + ReLU        → (8×8×64)
-  ↓ Flatten                                  → features ∈ ℝ^(4096)
-  ↓ Linear(512) + ReLU                       → hidden ∈ ℝ^(512)
-  ↓ Linear(7)                                → logits ∈ ℝ^7
-  ↓ Softmax                                  → π_θ(a|s_t)
+Input: s_t ∈ R^(64×64×3)
+  ↓
+Conv2d(32, 8×8, stride=4) + ReLU  →  (16×16×32)
+  ↓
+Conv2d(64, 4×4, stride=2) + ReLU  →  (8×8×64)
+  ↓
+Conv2d(64, 3×3, stride=1) + ReLU  →  (8×8×64)
+  ↓
+Flatten  →  features ∈ R^4096
+  ↓
+Linear(512) + ReLU  →  hidden ∈ R^512
+  ↓
+Linear(7)  →  logits ∈ R^7
+  ↓
+Softmax  →  π_θ(a|s_t)
 ```
 
 **Implementation:**
@@ -267,11 +274,14 @@ Input: s_t ∈ ℝ^(64×64×3)
 - Activation: ReLU throughout
 
 **Mario Example:**
-For a given state s_t, outputs action probabilities:
+
+For a given state $s_t$, outputs action probabilities:
+
 ```
 π_θ(a|s_t) = [0.05, 0.70, 0.15, 0.03, 0.03, 0.02, 0.02]
              [NOOP, right, right+A, right+B, right+A+B, A, left]
 ```
+
 Most likely action: "right" (keep moving forward).
 
 ---
@@ -279,18 +289,21 @@ Most likely action: "right" (keep moving forward).
 ### 2.2 Critic (Value Network)
 
 **Mathematical Definition:**
-```
-V_φ(s) = MLP_φ(CNN(s))
-```
+
+$$V_\phi(s) = \text{MLP}_\phi(\text{CNN}(s))$$
 
 **Purpose:** Estimates expected cumulative return from state s, used for computing advantages.
 
 **Architecture:** Shared CNN + separate value head
+
 ```
-Input: s_t ∈ ℝ^(64×64×3)
-  ↓ Shared CNN (same as actor)               → features ∈ ℝ^(4096)
-  ↓ Linear(512) + ReLU                       → hidden ∈ ℝ^(512)
-  ↓ Linear(1)                                → V_φ(s_t) ∈ ℝ
+Input: s_t ∈ R^(64×64×3)
+  ↓
+Shared CNN (same as actor)  →  features ∈ R^4096
+  ↓
+Linear(512) + ReLU  →  hidden ∈ R^512
+  ↓
+Linear(1)  →  V_φ(s_t) ∈ R
 ```
 
 **Implementation:**
@@ -299,9 +312,9 @@ Input: s_t ∈ ℝ^(64×64×3)
 - Standard initialization (1.0) for value head
 
 **Mario Example:**
-- Mario near flag: V(s) ≈ 1200 (high value, about to win)
-- Mario about to fall in pit: V(s) ≈ -50 (low value, about to die)
-- Mario in middle of level: V(s) ≈ 500 (moderate value)
+- Mario near flag: $V(s) \approx 1200$ (high value, about to win)
+- Mario about to fall in pit: $V(s) \approx -50$ (low value, about to die)
+- Mario in middle of level: $V(s) \approx 500$ (moderate value)
 
 ---
 
@@ -321,14 +334,13 @@ Input: s_t ∈ ℝ^(64×64×3)
 
 Generalized Advantage Estimation (Schulman et al., 2016) computes advantages using exponentially-weighted average of TD residuals:
 
-```
-δ_t = r_t + γ·V(s_{t+1})·(1-done_t) - V(s_t)
-Â_t = δ_t + (γλ)·δ_{t+1} + (γλ)²·δ_{t+2} + ...
-```
+$$\delta_t = r_t + \gamma \cdot V(s_{t+1}) \cdot (1 - \text{done}_t) - V(s_t)$$
+
+$$\hat{A}_t = \delta_t + (\gamma\lambda) \cdot \delta_{t+1} + (\gamma\lambda)^2 \cdot \delta_{t+2} + \ldots$$
 
 **Parameters:**
-- γ (gamma) = 0.99: Discount factor for future rewards
-- λ (lambda) = 0.95: GAE parameter (bias-variance tradeoff)
+- $\gamma = 0.99$: Discount factor for future rewards
+- $\lambda = 0.95$: GAE parameter (bias-variance tradeoff)
 
 **Implementation:**
 - Class: [`RolloutBuffer`](rollout_buffer.py#L13) in [rollout_buffer.py](rollout_buffer.py)
@@ -336,13 +348,12 @@ Generalized Advantage Estimation (Schulman et al., 2016) computes advantages usi
 - Normalizes advantages per batch for stability
 
 **Mario Example:**
-```
-t=0: r=1, V(s_0)=100, V(s_1)=110 → δ_0 = 1 + 0.99·110 - 100 = 9.9
-t=1: r=1, V(s_1)=110, V(s_2)=120 → δ_1 = 1 + 0.99·120 - 110 = 9.8
-t=2: r=1000, done=1              → δ_2 = 1000 + 0 - 120 = 880
 
-Â_0 = 9.9 + 0.95·0.99·9.8 + (0.95·0.99)²·880 ≈ 800 (propagated flag reward)
-```
+t=0: r=1, $V(s_0)=100$, $V(s_1)=110$ → $\delta_0 = 1 + 0.99 \cdot 110 - 100 = 9.9$
+t=1: r=1, $V(s_1)=110$, $V(s_2)=120$ → $\delta_1 = 1 + 0.99 \cdot 120 - 110 = 9.8$
+t=2: r=1000, done=1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ $\delta_2 = 1000 + 0 - 120 = 880$
+
+$\hat{A}_0 = 9.9 + 0.95 \cdot 0.99 \cdot 9.8 + (0.95 \cdot 0.99)^2 \cdot 880 \approx 800$ (propagated flag reward)
 
 ---
 
@@ -397,46 +408,42 @@ PPO training involves three loss components: the clipped surrogate objective (po
 
 PPO's key innovation is the clipped objective that prevents destructively large policy updates:
 
-```
-L^CLIP(θ) = 𝔼_t [min(r_t(θ)·Â_t, clip(r_t(θ), 1-ε, 1+ε)·Â_t)]
+$$L^{CLIP}(\theta) = \mathbb{E}_t [\min(r_t(\theta) \cdot \hat{A}_t, \text{clip}(r_t(\theta), 1-\varepsilon, 1+\varepsilon) \cdot \hat{A}_t)]$$
 
 where:
-  r_t(θ) = π_θ(a_t|s_t) / π_old(a_t|s_t)  [probability ratio]
-  Â_t = advantage estimate
-  ε = clipping parameter (0.2)
-```
+- $r_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{old}(a_t|s_t)}$ is the probability ratio
+- $\hat{A}_t$ is the advantage estimate
+- $\varepsilon = 0.2$ is the clipping parameter
 
 **Clipping Function:**
-```
-clip(r, 1-ε, 1+ε) = max(1-ε, min(r, 1+ε))
-                  = {
-                      1-ε  if r < 1-ε  (policy decreased too much)
-                      r    if 1-ε ≤ r ≤ 1+ε  (acceptable change)
-                      1+ε  if r > 1+ε  (policy increased too much)
-                    }
-```
+
+$$\text{clip}(r, 1-\varepsilon, 1+\varepsilon) = \max(1-\varepsilon, \min(r, 1+\varepsilon)) = \begin{cases}
+1-\varepsilon & \text{if } r < 1-\varepsilon \text{ (policy decreased too much)} \\
+r & \text{if } 1-\varepsilon \leq r \leq 1+\varepsilon \text{ (acceptable change)} \\
+1+\varepsilon & \text{if } r > 1+\varepsilon \text{ (policy increased too much)}
+\end{cases}$$
 
 **Purpose:**
 - Prevents large policy updates that could destabilize training
-- Ensures π_θ stays close to π_old (old policy from data collection)
+- Ensures $\pi_\theta$ stays close to $\pi_{old}$ (old policy from data collection)
 - Conservative policy improvement
 
 **How it Works:**
 
 The clipping creates a "trust region" around the old policy:
 
-1. **If advantage is positive (Â_t > 0)**: Good action, want to increase probability
-   - If r > 1+ε: Already increased too much → clip to 1+ε
-   - If r ≤ 1+ε: Normal update
+1. **If advantage is positive** ($\hat{A}_t > 0$): Good action, want to increase probability
+   - If $r > 1+\varepsilon$: Already increased too much → clip to $1+\varepsilon$
+   - If $r \leq 1+\varepsilon$: Normal update
 
-2. **If advantage is negative (Â_t < 0)**: Bad action, want to decrease probability
-   - If r < 1-ε: Already decreased too much → clip to 1-ε
-   - If r ≥ 1-ε: Normal update
+2. **If advantage is negative** ($\hat{A}_t < 0$): Bad action, want to decrease probability
+   - If $r < 1-\varepsilon$: Already decreased too much → clip to $1-\varepsilon$
+   - If $r \geq 1-\varepsilon$: Normal update
 
 **Implementation:**
 ```python
-# Compute probability ratio
-ratio = torch.exp(log_probs - old_log_probs)  # π_θ / π_old
+# Compute probability ratio: r_t = π_θ / π_old
+ratio = torch.exp(log_probs - old_log_probs)
 
 # Compute clipped objective
 advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
@@ -448,37 +455,34 @@ policy_loss = -torch.min(policy_loss1, policy_loss2).mean()
 **Code Location:** [`PPOAgent.update()`](ppo_agent.py#L144) in [ppo_agent.py](ppo_agent.py)
 
 **Mario Example:**
-```
+
 Action: "right+A" (jump forward)
-Old policy: π_old(right+A|s) = 0.2
-New policy: π_θ(right+A|s) = 0.3
-Ratio: r = 0.3 / 0.2 = 1.5
+Old policy: $\pi_{old}(\text{right+A}|s) = 0.2$
+New policy: $\pi_\theta(\text{right+A}|s) = 0.3$
+Ratio: $r = 0.3 / 0.2 = 1.5$
 
-Advantage: Â = +50 (good action, led to progress)
+Advantage: $\hat{A} = +50$ (good action, led to progress)
 
-Unclipped: 1.5 × 50 = 75
-Clipped: clip(1.5, 0.8, 1.2) × 50 = 1.2 × 50 = 60
+Unclipped: $1.5 \times 50 = 75$
+Clipped: $\text{clip}(1.5, 0.8, 1.2) \times 50 = 1.2 \times 50 = 60$
 
-Final: min(75, 60) = 60  [clipping prevented overly aggressive update]
-```
+Final: $\min(75, 60) = 60$ &nbsp;&nbsp;[clipping prevented overly aggressive update]
 
 ---
 
 ### 3.2 Value Function Loss (Critic Loss)
 
 **Mathematical Definition:**
-```
-L^VF(φ) = 𝔼_t [(V_φ(s_t) - V^target_t)²]
 
-where:
-  V^target_t = Â_t + V_old(s_t)  [advantage + old value = return estimate]
-```
+$$L^{VF}(\phi) = \mathbb{E}_t [(V_\phi(s_t) - V^{target}_t)^2]$$
+
+where $V^{target}_t = \hat{A}_t + V_{old}(s_t)$ (advantage + old value = return estimate)
 
 **Purpose:** Trains the critic to accurately predict returns, which is essential for computing good advantage estimates.
 
 **Why Not Direct Return?**
 - Returns have high variance
-- Value target (Â + V_old) is lower variance due to GAE
+- Value target ($\hat{A} + V_{old}$) is lower variance due to GAE
 - Better gradient estimates
 
 **Implementation:**
@@ -492,26 +496,24 @@ value_loss = F.mse_loss(value_pred, value_target.detach())
 **Code Location:** [`PPOAgent.update()`](ppo_agent.py#L161) in [ppo_agent.py](ppo_agent.py)
 
 **Mario Example:**
-```
+
 State: Mario standing before pit
-Old value: V_old(s) = 100
-Advantage: Â = -50 (agent died after this state)
-Target: V^target = -50 + 100 = 50
+Old value: $V_{old}(s) = 100$
+Advantage: $\hat{A} = -50$ (agent died after this state)
+Target: $V^{target} = -50 + 100 = 50$
 
-Predicted: V_φ(s) = 100 (critic too optimistic)
-Loss: (100 - 50)² = 2500 (large error)
+Predicted: $V_\phi(s) = 100$ (critic too optimistic)
+Loss: $(100 - 50)^2 = 2500$ (large error)
 
-After update: V_φ(s) → 60 (closer to target)
-```
+After update: $V_\phi(s) \to 60$ (closer to target)
 
 ---
 
 ### 3.3 Entropy Bonus
 
 **Mathematical Definition:**
-```
-H[π_θ] = 𝔼_s [-Σ_a π_θ(a|s) log π_θ(a|s)]
-```
+
+$$H[\pi_\theta] = \mathbb{E}_s \left[-\sum_a \pi_\theta(a|s) \log \pi_\theta(a|s)\right]$$
 
 **Purpose:** Encourages exploration by preventing policy from becoming too deterministic too early.
 
@@ -519,7 +521,7 @@ H[π_θ] = 𝔼_s [-Σ_a π_θ(a|s) log π_θ(a|s)]
 - Higher entropy → more uniform action distribution → more exploration
 - Lower entropy → peaky action distribution → more exploitation
 
-**Coefficient:** c_2 = 0.03 (ent_coef)
+**Coefficient:** $c_2 = 0.03$ (ent_coef)
 - Higher values (0.05): More exploration
 - Lower values (0.01): More exploitation
 
@@ -536,28 +538,26 @@ total_loss = policy_loss + vf_coef * value_loss - ent_coef * entropy
 **Code Location:** [`PPOAgent.update()`](ppo_agent.py#L168) in [ppo_agent.py](ppo_agent.py)
 
 **Mario Example:**
-```
+
 High entropy policy (early training):
-π_θ = [0.15, 0.17, 0.14, 0.13, 0.16, 0.12, 0.13]  H ≈ 1.95
-       [fairly uniform → explores different actions]
+$\pi_\theta$ = [0.15, 0.17, 0.14, 0.13, 0.16, 0.12, 0.13] &nbsp;&nbsp;$H \approx 1.95$
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[fairly uniform → explores different actions]
 
 Low entropy policy (late training):
-π_θ = [0.02, 0.85, 0.08, 0.02, 0.01, 0.01, 0.01]  H ≈ 0.60
-       [peaked at "right" → exploits known good action]
-```
+$\pi_\theta$ = [0.02, 0.85, 0.08, 0.02, 0.01, 0.01, 0.01] &nbsp;&nbsp;$H \approx 0.60$
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[peaked at "right" → exploits known good action]
 
 ---
 
 ### 3.4 Total Loss
 
 **Combined Objective:**
-```
-L(θ,φ) = -L^CLIP(θ) + c_1·L^VF(φ) - c_2·H[π_θ]
+
+$$L(\theta, \phi) = -L^{CLIP}(\theta) + c_1 \cdot L^{VF}(\phi) - c_2 \cdot H[\pi_\theta]$$
 
 where:
-  c_1 = vf_coef = 0.5   [value loss coefficient]
-  c_2 = ent_coef = 0.03 [entropy coefficient]
-```
+- $c_1 = 0.5$ is the value loss coefficient (vf_coef)
+- $c_2 = 0.03$ is the entropy coefficient (ent_coef)
 
 **Interpretation:**
 - Maximize clipped objective (hence negative sign)
@@ -565,10 +565,10 @@ where:
 - Maximize entropy (hence negative sign)
 
 **Trade-offs:**
-- c_1 too high: Over-focus on value, neglect policy
-- c_1 too low: Poor value estimates, noisy advantages
-- c_2 too high: Too much exploration, slow learning
-- c_2 too low: Premature convergence, local optima
+- $c_1$ too high: Over-focus on value, neglect policy
+- $c_1$ too low: Poor value estimates, noisy advantages
+- $c_2$ too high: Too much exploration, slow learning
+- $c_2$ too low: Premature convergence, local optima
 
 **Implementation:** [`PPOAgent.update()`](ppo_agent.py#L170) in [ppo_agent.py](ppo_agent.py)
 
@@ -583,20 +583,20 @@ This section describes the PPO training loop and how it differs from DreamerV3.
 PPO follows an on-policy actor-critic loop:
 
 1. **Collect Rollouts (On-Policy Data)**
-   - Run policy π_old in 32 parallel environments
+   - Run policy $\pi_{old}$ in 32 parallel environments
    - Collect 128 steps per environment = 4,096 transitions
    - Store: states, actions, rewards, values, log_probs, dones
 
 2. **Compute Advantages**
    - Use Generalized Advantage Estimation (GAE)
-   - Compute advantage Â_t for each timestep
+   - Compute advantage $\hat{A}_t$ for each timestep
    - Normalize advantages per batch
 
 3. **Update Policy and Value Function**
    - For K=4 epochs:
      - Shuffle data into mini-batches of size 256
      - For each mini-batch:
-       - Compute probability ratio r_t
+       - Compute probability ratio $r_t$
        - Compute clipped objective
        - Compute value loss
        - Compute entropy
@@ -669,11 +669,11 @@ while global_step < 10_000_000:  # 10M timesteps
             dist = Categorical(logits=logits)
 
             # Sample actions
-            actions = dist.sample()  # (32,)
-            log_probs = dist.log_prob(actions)  # (32,)
+            actions = dist.sample()  # shape: (32,)
+            log_probs = dist.log_prob(actions)  # shape: (32,)
 
             # Get value estimates
-            values = actor_critic.get_values(obs_tensor)  # (32,)
+            values = actor_critic.get_values(obs_tensor)  # shape: (32,)
 
         # (b) Step environments
         next_obs, rewards, dones, infos = envs.step(actions.cpu().numpy())
@@ -703,7 +703,7 @@ while global_step < 10_000_000:  # 10M timesteps
 
     # Compute advantages using GAE
     # Formula: Â_t = δ_t + (γλ)·δ_{t+1} + (γλ)²·δ_{t+2} + ...
-    # where δ_t = r_t + γ·V(s_{t+1})·(1-done_t) - V(s_t)
+    # where: δ_t = r_t + γ·V(s_{t+1})·(1-done_t) - V(s_t)
     advantages, returns = rollout_buffer.compute_advantages_and_returns(
         last_values=last_values,
         gamma=0.99,
@@ -845,9 +845,8 @@ PPO uses several important techniques for stable and efficient training.
 **Purpose:** Standardizes advantages to have mean 0 and std 1, improving optimization stability.
 
 **Formula:**
-```
-Â_normalized = (Â - mean(Â)) / (std(Â) + 1e-8)
-```
+
+$$\hat{A}_{\text{normalized}} = \frac{\hat{A} - \text{mean}(\hat{A})}{\text{std}(\hat{A}) + 10^{-8}}$$
 
 **Why it works:**
 - Prevents advantages from having very different scales
@@ -948,10 +947,8 @@ value_pred_clipped = old_values + torch.clamp(
 **Purpose:** Stop updates if policy changes too much from old policy.
 
 **Formula:**
-```
-KL(π_old || π_θ) ≈ 𝔼[log π_old(a|s) - log π_θ(a|s)]
-                = 𝔼[old_log_probs - new_log_probs]
-```
+
+$$\text{KL}(\pi_{old} || \pi_\theta) \approx \mathbb{E}[\log \pi_{old}(a|s) - \log \pi_\theta(a|s)] = \mathbb{E}[\text{old\_log\_probs} - \text{new\_log\_probs}]$$
 
 **Threshold:** Typically stop if KL > 0.01-0.015
 
@@ -967,7 +964,7 @@ with torch.no_grad():
 
 **Why it works:**
 - Prevents policy from changing too rapidly
-- Maintains on-policy assumption (data collected with π_old)
+- Maintains on-policy assumption (data collected with $\pi_{old}$)
 - Complements clipping for conservative updates
 
 ---
@@ -977,14 +974,13 @@ with torch.no_grad():
 **Purpose:** Diagnostic metric showing how well value function predicts returns.
 
 **Formula:**
-```
-EV = 1 - Var(returns - values) / Var(returns)
-```
+
+$$\text{EV} = 1 - \frac{\text{Var}(\text{returns} - \text{values})}{\text{Var}(\text{returns})}$$
 
 **Interpretation:**
-- EV ≈ 1.0: Perfect predictions
-- EV ≈ 0.0: No better than predicting mean
-- EV < 0.0: Worse than predicting mean (bad critic)
+- $\text{EV} \approx 1.0$: Perfect predictions
+- $\text{EV} \approx 0.0$: No better than predicting mean
+- $\text{EV} < 0.0$: Worse than predicting mean (bad critic)
 
 **Target:** Should be > 0.7 for good training
 

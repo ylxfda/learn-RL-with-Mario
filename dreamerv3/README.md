@@ -474,9 +474,8 @@ DreamerV3 training involves multiple loss functions that train different compone
 The world model is trained with four loss components:
 
 **Total World Model Loss:**
-```
-L_world = L_reconstruction + L_reward + L_continue + L_KL
-```
+
+$$\mathcal{L}_{world} = \mathcal{L}_{reconstruction} + \mathcal{L}_{reward} + \mathcal{L}_{continue} + \mathcal{L}_{KL}$$
 
 **Implementation:** [world_model.py:174-303](../dreamerv3/world_model.py#L174)
 
@@ -485,10 +484,8 @@ L_world = L_reconstruction + L_reward + L_continue + L_KL
 #### 3.1.1 Reconstruction Loss
 
 **Mathematical Definition:**
-```
-L_reconstruction = -𝔼_{q(z_t|h_t,o_t)} [log p(o_t | z_t, h_t)]
-                 = -log p(o_t | f_dec([z_t; h_t]))
-```
+
+$$\mathcal{L}_{reconstruction} = -\mathbb{E}_{q(z_t|h_t,o_t)} [\log p(o_t | z_t, h_t)] = -\log p(o_t | f_{dec}([z_t; h_t]))$$
 
 **Purpose:** Ensures the decoder can reconstruct observations from latent states, forcing the latent representation to retain all relevant information.
 
@@ -514,10 +511,8 @@ loss_reconstruction = -decoder_dist["image"].log_prob(observations["image"])
 #### 3.1.2 Reward Loss
 
 **Mathematical Definition:**
-```
-L_reward = -𝔼_{q(z_t|h_t,o_t)} [log p(r_t | z_t, h_t)]
-         = -log p(r_t | MLP_reward([z_t; h_t]))
-```
+
+$$\mathcal{L}_{reward} = -\mathbb{E}_{q(z_t|h_t,o_t)} [\log p(r_t | z_t, h_t)] = -\log p(r_t | \text{MLP}_{reward}([z_t; h_t]))$$
 
 **Purpose:** Trains the reward predictor to accurately predict rewards, essential for planning.
 
@@ -548,12 +543,10 @@ loss_reward = -reward_dist.log_prob(rewards)
 #### 3.1.3 Continuation Loss
 
 **Mathematical Definition:**
-```
-L_continue = -𝔼_{q(z_t|h_t,o_t)} [log p(c_t | z_t, h_t)]
-           = -log Bernoulli(c_t | sigmoid(MLP_cont([z_t; h_t])))
-```
 
-where c_t = 1 - terminal_t.
+$$\mathcal{L}_{continue} = -\mathbb{E}_{q(z_t|h_t,o_t)} [\log p(c_t | z_t, h_t)] = -\log \text{Bernoulli}(c_t | \sigma(\text{MLP}_{cont}([z_t; h_t])))$$
+
+where $c_t = 1 - \text{terminal}_t$.
 
 **Purpose:** Trains the continuation predictor to forecast episode termination, used for computing discount factors.
 
@@ -585,19 +578,17 @@ loss_continue = -cont_dist.log_prob(continuations)
 
 The KL loss consists of two components that balance representation learning:
 
-```
-L_KL = α_dyn · L_dynamics + α_rep · L_representation
+$$\mathcal{L}_{KL} = \alpha_{dyn} \cdot \mathcal{L}_{dynamics} + \alpha_{rep} \cdot \mathcal{L}_{representation}$$
 
 where:
-  L_dynamics       = 𝔼[KL(sg(q(z_t|h_t,o_t)) || p(z_t|h_t))]
-  L_representation = 𝔼[KL(q(z_t|h_t,o_t) || sg(p(z_t|h_t)))]
+$$\mathcal{L}_{dynamics} = \mathbb{E}[\text{KL}(\text{sg}(q(z_t|h_t,o_t)) \| p(z_t|h_t))]$$
+$$\mathcal{L}_{representation} = \mathbb{E}[\text{KL}(q(z_t|h_t,o_t) \| \text{sg}(p(z_t|h_t)))]$$
 
-  sg(·) denotes stop_gradient
-```
+and $\text{sg}(\cdot)$ denotes stop_gradient.
 
 **Default scales:**
-- α_dyn = 0.5
-- α_rep = 0.1
+- $\alpha_{dyn} = 0.5$
+- $\alpha_{rep} = 0.1$
 
 **Purpose:**
 1. **Dynamics loss:** Encourages the prior p(z_t|h_t) to match the posterior, making imagination accurate
@@ -644,29 +635,25 @@ The actor and critic are trained using imagined trajectories from the world mode
 
 **Mathematical Definition:**
 
-```
-L_actor = -𝔼_τ [w_t · (V̂_λ(s_t) - b_t)] - β_ent · H[π(·|s_t)]
+$$\mathcal{L}_{actor} = -\mathbb{E}_\tau [w_t \cdot (\hat{V}_\lambda(s_t) - b_t)] - \beta_{ent} \cdot H[\pi(\cdot|s_t)]$$
 
 where:
-  τ: imagined trajectory
-  w_t: importance weights (trajectory probability)
-  V̂_λ(s_t): λ-return target
-  b_t: baseline (for variance reduction)
-  H[π]: policy entropy
-  β_ent: entropy coefficient (default: 0.0003)
-```
+- $\tau$: imagined trajectory
+- $w_t$: importance weights (trajectory probability)
+- $\hat{V}_\lambda(s_t)$: λ-return target
+- $b_t$: baseline (for variance reduction)
+- $H[\pi]$: policy entropy
+- $\beta_{ent} = 0.0003$: entropy coefficient
 
 **Gradient Estimator:** DreamerV3 uses the "dynamics" estimator by default:
-```
-∇_θ L_actor = -𝔼[w_t · ∇_θ V̂_λ(s_t)]
-```
+
+$$\nabla_\theta \mathcal{L}_{actor} = -\mathbb{E}[w_t \cdot \nabla_\theta \hat{V}_\lambda(s_t)]$$
 
 This allows gradients to flow through the world model dynamics, providing stronger learning signals than standard REINFORCE.
 
 **Entropy Regularization:**
-```
-L_actor = L_actor - β_ent · 𝔼[H[π(a_t|s_t)]]
-```
+
+$$\mathcal{L}_{actor} = \mathcal{L}_{actor} - \beta_{ent} \cdot \mathbb{E}[H[\pi(a_t|s_t)]]$$
 
 Encourages exploration by maximizing policy entropy.
 
@@ -697,23 +684,19 @@ actor_loss = torch.mean(actor_loss)
 
 **Mathematical Definition:**
 
-```
-L_critic = -𝔼[w_t · log p(V̂_λ(s_t) | s_t)]
-         + (if slow_target)  -𝔼[log p(V̂_slow(s_t) | s_t)]
+$$\mathcal{L}_{critic} = -\mathbb{E}[w_t \cdot \log p(\hat{V}_\lambda(s_t) | s_t)] + \text{(if slow\_target)} \; -\mathbb{E}[\log p(\hat{V}_{slow}(s_t) | s_t)]$$
 
 where:
-  V̂_λ(s_t): λ-return target (stop gradient)
-  V̂_slow(s_t): slow target network prediction
-  w_t: importance weights
-```
+- $\hat{V}_\lambda(s_t)$: λ-return target (stop gradient)
+- $\hat{V}_{slow}(s_t)$: slow target network prediction
+- $w_t$: importance weights
 
 **Purpose:** Trains the critic to predict λ-returns accurately. The critic provides baselines for the actor and is used during imagination for bootstrapping.
 
 **Slow Target Regularization (optional):**
 Adds a regularization term using a slowly-updated copy of the value network to stabilize training:
-```
-V_slow ← 0.98 · V_slow + 0.02 · V
-```
+
+$$V_{slow} \leftarrow 0.98 \cdot V_{slow} + 0.02 \cdot V$$
 
 **Implementation:**
 ```python
@@ -749,25 +732,21 @@ value_loss = torch.mean(weights[:-1] * value_loss)
 
 The λ-return interpolates between one-step TD and Monte Carlo returns:
 
-```
-V̂_λ(s_t) = r_t + γ_t [(1-λ) V(s_{t+1}) + λ V̂_λ(s_{t+1})]
+$$\hat{V}_\lambda(s_t) = r_t + \gamma_t [(1-\lambda) V(s_{t+1}) + \lambda \hat{V}_\lambda(s_{t+1})]$$
 
 Recursively expanded:
-V̂_λ(s_t) = r_t + γ_t (1-λ) V(s_{t+1})
-                + γ_t λ r_{t+1} + γ_t γ_{t+1} λ (1-λ) V(s_{t+2})
-                + γ_t γ_{t+1} λ^2 r_{t+2} + ...
-                + γ_t ... γ_{T-1} λ^{T-t-1} V(s_T)
+
+$$\hat{V}_\lambda(s_t) = r_t + \gamma_t (1-\lambda) V(s_{t+1}) + \gamma_t \lambda r_{t+1} + \gamma_t \gamma_{t+1} \lambda (1-\lambda) V(s_{t+2}) + \gamma_t \gamma_{t+1} \lambda^2 r_{t+2} + \ldots + \gamma_t \cdots \gamma_{T-1} \lambda^{T-t-1} V(s_T)$$
 
 where:
-  λ: mixing parameter (default: 0.95)
-  γ_t: discount = c_t · γ_base (c_t is continuation, γ_base ≈ 0.997)
-  V(s_T): bootstrap value at horizon
-```
+- $\lambda = 0.95$: mixing parameter (default)
+- $\gamma_t = c_t \cdot \gamma_{base}$: discount ($c_t$ is continuation, $\gamma_{base} \approx 0.997$)
+- $V(s_T)$: bootstrap value at horizon
 
 **Special cases:**
-- λ = 0: One-step TD (high bias, low variance)
-- λ = 1: Monte Carlo (low bias, high variance)
-- λ = 0.95: Balanced trade-off (DreamerV3 default)
+- $\lambda = 0$: One-step TD (high bias, low variance)
+- $\lambda = 1$: Monte Carlo (low bias, high variance)
+- $\lambda = 0.95$: Balanced trade-off (DreamerV3 default)
 
 **Implementation:**
 ```python
