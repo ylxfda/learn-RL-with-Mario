@@ -1,13 +1,14 @@
 # 🪜 A Brief Introduction to Reinforcement Learning
 
-This document provides a self-contained introduction to reinforcement learning, tracing the evolution from simple policy gradients to modern world models. No prior RL knowledge required!
+This repository's main goal is to help you learn and implement PPO and DreamerV3 algorithms. However, when reading original papers for these two algorithms, the most common question is: **"Why is it designed this way?"**
+
+The best way to answer this question is to understand how RL evolved from the simplest REINFORCE method to PPO, and eventually to the Dreamer series of world model-based algorithms. This tutorial serves exactly that purpose — it provides a self-contained introduction tracing this evolution step by step, building up the key concepts and motivations behind each algorithmic innovation. No prior RL knowledge required!
 
 ---
 
 ## 📋 Table of Contents
 
 - [What Is Reinforcement Learning?](#-what-is-reinforcement-learning)
-- [Why Mario?](#-why-mario)
 - [The Evolution of RL Algorithms](#the-evolution-of-rl-algorithms-a-question-driven-journey)
   - [1️⃣ REINFORCE](#1️⃣-reinforce-can-we-learn-directly-from-rewards)
   - [2️⃣ Baseline](#2️⃣-baseline-how-do-we-reduce-the-noise)
@@ -24,15 +25,22 @@ This document provides a self-contained introduction to reinforcement learning, 
 ## 🧩 What Is Reinforcement Learning?
 
 **The Core Idea:**
-Reinforcement learning teaches an agent to make decisions through trial and error, guided by rewards.
+Reinforcement learning teaches an agent (like Mario) to make decisions through trial and error, guided by rewards. Think of it as learning to play Super Mario Bros: Mario doesn't start knowing how to beat the level — he learns by trying different actions and getting feedback.
 
-**The Loop:**
+**The RL Loop (with Mario as example):**
 At each time step $t$:
 
-1. Agent observes **state** $s_t$
-2. Agent selects **action** $a_t$ based on its policy $\pi_\theta(a|s)$
-3. Environment returns **reward** $r_t$ and next **state** $s_{t+1}$
-4. Agent updates its policy to get better rewards in the future
+1. **Agent observes state** $s_t$
+   - *Mario sees*: enemies, blocks, pipes, gaps, his position on screen
+
+2. **Agent selects action** $a_t$ based on its policy $\pi_\theta(a|s)$
+   - *Mario chooses*: move right, jump, run+jump, or do nothing
+
+3. **Environment returns reward** $r_t$ and next **state** $s_{t+1}$
+   - *Mario receives*: +1 for moving forward, +100 for collecting coins, +1000 for reaching the flag, -15 for dying
+
+4. **Agent updates its policy** to get better rewards in the future
+   - *Mario learns*: "Jumping at that gap was good!" or "Walking into that Goomba was bad!"
 
 **The Objective:**
 Learn a policy $\pi_\theta$ that maximizes **expected cumulative reward**:
@@ -41,20 +49,22 @@ $$
 J(\theta) = \mathbb{E}_{\pi_\theta} \left[ \sum_{t=0}^{\infty} \gamma^t r_t \right] \tag{1}
 $$
 
-where $\gamma \in [0,1)$ is the discount factor (future rewards matter less than immediate ones).
+where $\gamma \in [0,1)$ is the discount factor.
 
----
+**Why "Expected" Reward?**
+We maximize the **expectation** (average over many runs) rather than a single episode's reward because:
+- **Stochastic environments**: Mario might encounter different enemy patterns or random spawns
+- **Stochastic policies**: Mario samples actions probabilistically (e.g., 70% jump, 30% run)
+- **Generalization**: We want a policy that consistently reaches the flag, not one that got lucky once
 
-## 🎮 Why Mario?
+**Why Discount Factor $\gamma$?**
+The discount factor serves three purposes:
 
-Mario is the perfect playground for learning RL because his world contains all the essential elements:
-
-- **States**: What Mario observes (enemies, blocks, pipes, terrain)
-- **Actions**: What Mario can do (move left/right, jump, run, crouch)
-- **Rewards**: What Mario receives (coins, points for defeating enemies, reaching the flag)
-- **Goal**: Learn a strategy that maximizes long-term success
-
-This simple yet rich environment lets you focus on understanding RL algorithms without getting lost in complex domain details.
+1. **Mathematical convergence**: Without discounting ($\gamma=1$), the infinite sum might diverge (become infinite)
+2. **Preference for sooner rewards**: Getting +100 points now is better than getting +100 points in 1000 steps — this encourages efficient solutions
+3. **Uncertainty about distant rewards**: In Mario, episodes end when he dies or reaches the flag, so distant rewards are less certain
+   - With $\gamma=0.99$, a reward 100 steps away is worth only $0.99^{100} \approx 0.37$ of its nominal value
+   - This encourages Mario to reach the flag quickly rather than wandering aimlessly
 
 ---
 
@@ -76,6 +86,107 @@ $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}[\nabla_\theta \log \pi_\theta(a_t|s_t) \, G_t] \tag{1}
 $$
 
+**Step-by-Step Derivation:**
+
+Let's derive this equation from first principles. Our goal is to maximize $J(\theta) = \mathbb{E}_{\pi_\theta}[G_0]$, where $G_0$ is the total return from the start of an episode.
+
+**Step 1: Expand the expectation**
+
+The expectation is taken over trajectories $\tau = (s_0, a_0, r_0, s_1, a_1, r_1, \ldots)$ generated by policy $\pi_\theta$:
+
+$$J(\theta) = \sum_{\tau} P(\tau | \theta) \, G(\tau)$$
+
+where $P(\tau | \theta)$ is the probability of trajectory $\tau$ under policy $\pi_\theta$, and $G(\tau)$ is the return of that trajectory.
+
+**Step 2: Compute the gradient**
+
+Take the gradient with respect to $\theta$:
+
+$$\nabla_\theta J(\theta) = \sum_{\tau} \nabla_\theta P(\tau | \theta) \, G(\tau)$$
+
+**Step 3: Apply the log-derivative trick**
+
+Use the identity $\nabla_\theta P(\tau | \theta) = P(\tau | \theta) \, \nabla_\theta \log P(\tau | \theta)$:
+
+$$\nabla_\theta J(\theta) = \sum_{\tau} P(\tau | \theta) \, \nabla_\theta \log P(\tau | \theta) \, G(\tau)$$
+
+This can be rewritten as an expectation:
+
+$$\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} [\nabla_\theta \log P(\tau | \theta) \, G(\tau)]$$
+
+**Step 4: Expand the trajectory probability**
+
+The probability of a trajectory is:
+
+$$P(\tau | \theta) = p(s_0) \prod_{t=0}^{T-1} \pi_\theta(a_t|s_t) \, p(s_{t+1}|s_t, a_t)$$
+
+Taking the log:
+
+$$\log P(\tau | \theta) = \log p(s_0) + \sum_{t=0}^{T-1} \left[\log \pi_\theta(a_t|s_t) + \log p(s_{t+1}|s_t, a_t)\right]$$
+
+**Step 5: Compute gradient of log probability**
+
+When we take $\nabla_\theta$, the initial state distribution $p(s_0)$ and transition dynamics $p(s_{t+1}|s_t, a_t)$ don't depend on $\theta$, so they vanish:
+
+$$\nabla_\theta \log P(\tau | \theta) = \sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t)$$
+
+**Step 6: Substitute back**
+
+Plugging this into our gradient expression:
+
+$$\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[\sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \, G(\tau)\right]$$
+
+**Step 7: Refine to per-timestep form**
+
+Since the return from timestep $t$ is $G_t = \sum_{k=t}^{T-1} \gamma^{k-t} r_k$, and rewards after time $t$ don't depend on actions before $t$, we can write:
+
+$$\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\left[\sum_{t=0}^{T-1} \nabla_\theta \log \pi_\theta(a_t|s_t) \, G_t\right]$$
+
+In practice, we sample this expectation by running episodes, giving us the REINFORCE update rule.
+
+**Key Insights:**
+- The gradient pushes the policy to increase the probability of actions that led to high returns
+- The environment dynamics disappear from the gradient (we don't need to know how the environment works!)
+- We can estimate this gradient by sampling trajectories from $\pi_\theta$
+
+**What does "sampling trajectories" mean in practice?**
+
+The gradient formula contains an **expectation** $\mathbb{E}_{\pi_\theta}[\cdot]$, which theoretically requires averaging over *all possible trajectories* that could be generated by policy $\pi_\theta$. However:
+
+1. **Problem**: There are infinitely many (or exponentially many) possible trajectories
+   - Mario could take infinitely many different sequences of actions
+   - We can't enumerate and compute the gradient for each one
+
+2. **Solution (Monte Carlo Estimation)**: Instead of computing the exact expectation, we **approximate** it by:
+   - Running the policy $\pi_\theta$ in the environment (e.g., playing Mario) to generate a few sample trajectories
+   - Computing the gradient for these sampled trajectories
+   - Using their average as an estimate of the true expectation
+
+3. **Practical Algorithm**:
+   ```python
+   # Run N episodes with current policy π_θ
+   for episode in range(N):
+       trajectory = run_episode(policy=π_θ)  # Sample one trajectory
+       G_t = compute_returns(trajectory)
+
+       # Compute gradient for this trajectory
+       for t in range(len(trajectory)):
+           gradient += ∇_θ log π_θ(a_t|s_t) * G_t
+
+   # Average the gradients (estimate the expectation)
+   gradient = gradient / N
+
+   # Update parameters
+   θ ← θ + learning_rate * gradient
+   ```
+
+4. **Why this works (Law of Large Numbers)**:
+   - As we collect more trajectories, the sample average converges to the true expectation
+   - Even with just a few trajectories (e.g., 10-20 episodes), we get a reasonable estimate
+
+**Mario Example:**
+Instead of imagining every possible way Mario could play the game, we just have Mario play 10 times. If he reaches the flag in 8 out of 10 games by mostly pressing "right" and "jump", we increase the probability of those actions. We don't need to know what would have happened in the billions of other ways he could have played!
+
 **Intuition:**
 If a sequence of actions led to high reward, increase their probability. If it led to low reward, decrease it.
 
@@ -83,9 +194,77 @@ If a sequence of actions led to high reward, increase their probability. If it l
 Mario tries jumping randomly. If he survives longer in one episode, he reinforces those specific jumps.
 
 **❌ The Problem:**
-- **High variance**: Results swing wildly between episodes
-- **Slow learning**: Feedback only comes at the end of entire episodes
-- **Credit assignment**: Hard to know *which* actions were actually good
+
+**1. High Variance** - Results swing wildly between episodes
+
+*Why is high variance bad?*
+
+Even though our gradient estimate is **unbiased** (correct on average), high variance means individual estimates are unreliable:
+
+- **Noisy gradients**: One episode might give gradient pointing left, next episode points right
+- **Requires small learning rates**: To avoid instability from bad gradient estimates, we must take tiny steps → slow learning
+- **Needs many samples**: To average out the noise, we need many episodes per update → sample inefficient
+- **Unstable training**: Performance bounces around instead of steadily improving
+
+**Mario Example of High Variance:**
+```
+Episode 1: Mario dies immediately → G_0 = -15 → "pressing right is bad!"
+Episode 2: Mario reaches flag → G_0 = 3000 → "pressing right is great!"
+Episode 3: Mario falls in pit → G_0 = 100 → "pressing right is mediocre..."
+Episode 4: Mario gets stuck → G_0 = 50 → "pressing right is terrible!"
+```
+
+The gradient estimate keeps changing drastically! The algorithm doesn't know which signal to trust. If we use a large learning rate, the policy will swing wildly between these conflicting signals and never converge.
+
+**Mathematically**: Variance affects convergence speed
+
+If gradient estimates have variance $\sigma^2$, then to get an estimate within $\epsilon$ of the true gradient with high probability, we need roughly $O(\sigma^2/\epsilon^2)$ samples. Higher variance → need exponentially more data!
+
+**2. Slow Learning** - Feedback only comes at the end of entire episodes
+
+**3. Credit Assignment** - Hard to know *which* actions were actually good
+
+You might wonder: "But Mario gives us rewards at *every* timestep (e.g., +1 for moving right, +100 for coins, +1000 for flag). Why is credit assignment still a problem?"
+
+**The Key Issue**: Even though the environment provides individual rewards $r_t$ at each timestep, **REINFORCE uses the cumulative return** $G_t = r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + \ldots$ to weight the gradient. This aggregation loses information about *which specific actions* were responsible for the outcome.
+
+**Mario Example:**
+
+Consider a successful episode that reaches the flag with total return $G_0 = 3000$:
+
+```
+t=0:   Jump over first goomba      → Critical action! (would die otherwise)
+t=10:  Press RIGHT in empty hallway → Trivial action (just moving forward)
+t=50:  Jump to avoid pit            → Critical action! (would fall otherwise)
+t=200: Jump to grab flag            → Critical action! (completes level)
+```
+
+REINFORCE updates ALL these actions with the same weight:
+
+$$
+\nabla_\theta \log \pi_\theta(a_0|s_0) \cdot 3000 \quad \text{(jump over goomba)}
+$$
+$$
+\nabla_\theta \log \pi_\theta(a_{10}|s_{10}) \cdot 3000 \quad \text{(press right)}
+$$
+$$
+\nabla_\theta \log \pi_\theta(a_{50}|s_{50}) \cdot 3000 \quad \text{(jump over pit)}
+$$
+$$
+\nabla_\theta \log \pi_\theta(a_{200}|s_{200}) \cdot 3000 \quad \text{(grab flag)}
+$$
+
+**The Problem:**
+- The critical actions (jumping over goomba, avoiding pit, grabbing flag) and the trivial action (moving right in empty space) all get the **same credit** (3000)
+- We cannot distinguish which actions were *actually* responsible for success
+- An episode with 300 actions means 300 actions all get credited equally, even though maybe only 10 were crucial
+
+**Why This Matters:**
+- Wastes learning signal on irrelevant actions
+- Slow to identify truly important decisions
+- May reinforce lucky but suboptimal behaviors
+
+**What we'd prefer:** Some way to assign *more* credit to actions that had bigger impact (like the jumps over dangers) and *less* credit to routine actions (like moving right in safe areas). This is what other more advanced RL algorithms try to address, which we'll learn next!
 
 > 🤔 **Next Question:** Can we make learning more stable by judging actions relative to "typical" performance?
 
@@ -102,6 +281,33 @@ Subtract a baseline $b(s_t)$ (typically the value function $V^\pi(s_t)$) from th
 $$
 \nabla_\theta J(\theta) = \mathbb{E}[\nabla_\theta \log \pi_\theta(a_t|s_t) \, (G_t - b(s_t))] \tag{2}
 $$
+
+**What is the Value Function?**
+
+The **value function** $V^\pi(s)$ estimates the expected cumulative return starting from state $s$ and following policy $\pi$:
+
+$$
+V^\pi(s) = \mathbb{E}_{\pi} \left[ G_t \mid s_t = s \right] = \mathbb{E}_{\pi} \left[ \sum_{k=0}^{\infty} \gamma^k r_{t+k} \mid s_t = s \right]
+$$
+
+**Intuition**: $V^\pi(s)$ answers the question: "If Mario is in state $s$ (e.g., standing before a goomba), how much total reward can he expect to get from now until the end, following his current policy?"
+
+**How is the Value Function Calculated?**
+
+In the baseline method, we typically estimate $V^\pi(s)$ using **Monte Carlo estimation**:
+
+1. **Collect episodes**: Run policy $\pi$ multiple times and observe returns from each state
+2. **Average returns**: For each state $s$, average all the returns $G_t$ observed from that state
+3. **Result**: $V^\pi(s) \approx \frac{1}{N} \sum_{i=1}^{N} G_t^{(i)}$ where we visited state $s$ $N$ times
+
+**Mario Example:**
+- Every time Mario is at "position 100 with goomba ahead", we record what happened next
+- Episode 1: Mario jumps, gets +2000 total
+- Episode 2: Mario jumps, gets +1800 total
+- Episode 3: Mario walks into it, gets -15 total
+- Average: $V^\pi(\text{goomba ahead}) \approx \frac{2000 + 1800 + (-15)}{3} \approx 1262$
+
+In practice, $V^\pi$ is often approximated using a **neural network** (called the critic) that learns to predict these expected returns, which we'll see in the Actor-Critic method next.
 
 **Advantage Function:**
 Define $A_t = G_t - V^\pi(s_t)$ as the **advantage** — how much better this action was compared to average.
@@ -146,7 +352,26 @@ Every single frame, Mario gets immediate feedback: "Was this jump good or bad?" 
 - Better credit assignment
 
 **❌ Still a Problem:**
-Learning is still sample-inefficient (each frame is used once), and training can be unstable.
+
+**1. Sample Inefficiency**: Each frame is used once for updates, then discarded. Unlike methods that use replay buffers, Actor-Critic doesn't reuse past experience.
+
+**2. Training Instability**: Actor-Critic can exhibit unstable training for several reasons:
+
+- **Bootstrapping with incorrect estimates**: The critic learns from its own predictions ($V_\phi(s_{t+1})$ in the TD error). If the critic is initially wrong about state values, it can teach itself incorrect values, creating a vicious cycle.
+
+  **Mario Example**: If the critic wrongly believes "standing before a pit" has value +200, it will compute small TD errors even when Mario falls. The critic won't learn the state is actually dangerous until much later.
+
+- **Moving targets problem**: Both actor and critic update simultaneously:
+  - Actor's policy changes → different states are visited → critic's learning target shifts
+  - Critic's values change → actor's gradient direction changes
+  - This creates a "chasing a moving target" scenario where neither network can fully converge
+
+- **Correlated sequential data**: On-policy data comes from consecutive game frames, which are highly similar. This correlation can amplify errors and slow convergence.
+
+**Why This Matters:**
+- Training curves can spike up and down unpredictably
+- Hyperparameters (learning rates, network sizes) require careful tuning
+- Small changes can cause training to diverge
 
 > 🤔 **Next Question:** Can we collect experience faster and more efficiently?
 
@@ -187,7 +412,97 @@ $$
 \end{aligned} \tag{4}
 $$
 
-where $\text{KL}(\cdot \| \cdot)$ is the Kullback-Leibler divergence measuring policy difference.
+**Breaking Down Equation (4):**
+
+**First, Let's Define the Two Policies:**
+
+- **$\pi_{\theta_{\text{old}}}$ (Old Policy / Behavior Policy)**:
+  - The policy that was used to **collect the data** (states, actions, rewards)
+  - Has fixed parameters $\theta_{\text{old}}$ that do **not** change during the current update
+  - We ran this policy in the environment to gather experience
+  - Think of it as "the policy Mario was using when he played the game"
+
+- **$\pi_\theta$ (New Policy / Target Policy)**:
+  - The policy we are **currently optimizing** and want to improve
+  - Has parameters $\theta$ that we are **updating** via gradient descent
+  - We want to make this policy better based on the data collected by $\pi_{\theta_{\text{old}}}$
+  - Think of it as "the improved policy Mario is learning"
+
+**How They're Used in the Training Process:**
+
+1. **Collect Data**: Use $\pi_{\theta_{\text{old}}}$ to interact with environment
+   - Mario plays the game using his current policy
+   - We record: states $s_t$, actions $a_t$, rewards $r_t$, advantages $A_t$
+
+2. **Optimize New Policy**: Update $\pi_\theta$ to maximize the objective, subject to the KL constraint
+   - We improve Mario's policy based on what happened during gameplay
+   - The probability ratio $\frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)}$ allows us to use old data to evaluate the new policy
+
+3. **Update and Repeat**: After optimization, set $\theta_{\text{old}} \leftarrow \theta$
+   - The new policy becomes the old policy for the next iteration
+   - Mario's improved policy becomes his "current" policy
+   - Collect new data with this updated policy and repeat
+
+**Why We Need Two Policies:**
+
+- **Data reuse**: TRPO collects data with $\pi_{\theta_{\text{old}}}$, but we want to improve $\pi_\theta$ using that data
+- **Importance sampling**: The probability ratio corrects for the mismatch between the distribution of actions in our data (from $\pi_{\theta_{\text{old}}}$) and the distribution we're evaluating (from $\pi_\theta$)
+- **Stability**: The KL constraint ensures $\pi_\theta$ doesn't deviate too far from $\pi_{\theta_{\text{old}}}$, keeping the importance sampling valid
+
+**Part 1: The Objective (What We Want to Maximize)**
+
+$$\mathbb{E}_t\left[\frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)} A_t\right]$$
+
+This is called the **surrogate objective** with **importance sampling**:
+
+- **Probability ratio** $\frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)}$:
+  - Measures how much more (or less) likely action $a_t$ is under new policy $\pi_\theta$ compared to old policy $\pi_{\theta_{\text{old}}}$
+  - If ratio > 1: New policy prefers this action more than old policy
+  - If ratio < 1: New policy prefers this action less than old policy
+  - If ratio = 1: Both policies assign same probability
+
+- **Advantage** $A_t$:
+  - Positive advantage ($A_t > 0$): Action was better than expected → increase its probability (ratio > 1)
+  - Negative advantage ($A_t < 0$): Action was worse than expected → decrease its probability (ratio < 1)
+
+- **Why importance sampling?**: We collected data using $\pi_{\theta_{\text{old}}}$, but we want to evaluate $\pi_\theta$. The ratio corrects for this distribution mismatch, allowing us to reuse old data.
+
+**Part 2: The Constraint (What We Must Satisfy)**
+
+$$\mathbb{E}_t[\text{KL}(\pi_{\theta_{\text{old}}} \| \pi_\theta)] \le \delta$$
+
+- **KL divergence** $\text{KL}(\pi_{\theta_{\text{old}}} \| \pi_\theta)$:
+  - Measures how different the new policy distribution is from the old policy distribution
+  - Specifically: $\text{KL}(P \| Q) = \sum_a P(a) \log \frac{P(a)}{Q(a)}$ (for discrete actions)
+  - Always non-negative: $\text{KL} \geq 0$, with $\text{KL} = 0$ only when policies are identical
+  - Not symmetric: $\text{KL}(P \| Q) \neq \text{KL}(Q \| P)$ in general
+
+- **Trust region size** $\delta$:
+  - A small constant (e.g., $\delta = 0.01$)
+  - Limits how much the policy can change in one update
+  - Smaller $\delta$ → more conservative updates → more stable but slower learning
+
+**Why This Formulation Works:**
+
+1. **Monotonic Improvement Guarantee**: TRPO provides theoretical guarantees that performance won't decrease (under certain assumptions), because we only update the policy within a safe region
+
+2. **Prevents Catastrophic Forgetting**: The KL constraint ensures the new policy doesn't deviate too far from the old policy, preventing sudden collapse in performance
+
+3. **Maintains On-Policy Assumption**: By keeping policies similar, data collected from $\pi_{\theta_{\text{old}}}$ remains approximately valid for $\pi_\theta$
+
+**Mario Example:**
+
+Suppose at state "goomba ahead":
+- Old policy: $\pi_{\theta_{\text{old}}}(\text{jump}|s) = 0.6$, $\pi_{\theta_{\text{old}}}(\text{right}|s) = 0.3$
+- Advantage: $A(\text{jump}) = +50$ (jumping worked well!)
+
+Without constraint, we might update to:
+- New policy: $\pi_{\theta}(\text{jump}|s) = 0.99$ (too aggressive!)
+
+With KL constraint ($\delta = 0.01$), TRPO limits the update:
+- New policy: $\pi_{\theta}(\text{jump}|s) = 0.65$ (safer, gradual increase)
+
+The constraint says: "Mario, you can increase the probability of jumping, but not by too much in one update. Let's be conservative."
 
 **Mario's Experience:**
 Mario takes small, safe steps in learning. He doesn't radically change his jumping strategy overnight.
@@ -197,6 +512,30 @@ Much more stable training. Performance rarely degrades.
 
 **❌ New Problem:**
 The KL constraint requires **second-order optimization** (computing Hessians), which is computationally expensive.
+
+**Why does TRPO need second-order optimization?**
+
+The KL constraint $\mathbb{E}_t[\text{KL}(\pi_{\theta_{\text{old}}} \| \pi_\theta)] \le \delta$ is a **hard constraint** that must be satisfied. To solve this constrained optimization problem efficiently, TRPO uses:
+
+1. **Second-order Taylor approximation**: Approximate the KL divergence around the current parameters using both first derivatives (gradient) and second derivatives (Hessian/curvature)
+
+2. **Natural gradient descent**: The optimal update direction requires computing:
+   $$\theta_{\text{new}} = \theta_{\text{old}} + \alpha \mathbf{F}^{-1} \nabla_\theta J(\theta)$$
+   where $\mathbf{F}$ is the **Fisher information matrix** (the Hessian of the KL divergence)
+
+3. **Conjugate gradient method**: To avoid explicitly forming the full Hessian matrix, TRPO uses conjugate gradient, which requires Hessian-vector products
+
+**Why is this expensive?**
+
+- **Memory**: For a neural network with $n$ parameters, the Hessian is an $n \times n$ matrix. For millions of parameters, this is impractical to store
+- **Computation**: Even though TRPO uses Hessian-vector products (avoiding explicit matrix formation), this still requires multiple backward passes through the network
+- **Complexity**: Each policy update requires solving a constrained optimization problem, much slower than simple gradient descent
+
+**Concrete comparison:**
+- **First-order methods** (like standard gradient descent): Compute gradient → take step. Fast and simple.
+- **TRPO (second-order)**: Compute gradient → compute Hessian-vector products → solve constrained optimization → take step. Slow but stable.
+
+This is why researchers wanted to find a simpler alternative that keeps TRPO's stability...
 
 > 🤔 **Next Question:** Can we keep the stability of TRPO but make it simpler?
 
@@ -237,7 +576,7 @@ If Mario's new policy tries to change too much (say, more than ±20%), we gently
 **❌ The Remaining Challenge:**
 PPO learns only from **real interactions** with the environment. Mario must play millions of frames to learn. This is slow, expensive, and sample-inefficient.
 
-> 🤔 **Final Question:** What if Mario could *imagine* playing the game instead of always playing for real?
+> 🤔 **Further Question:** What if Mario could *imagine* playing the game instead of always playing for real?
 
 ---
 
@@ -248,9 +587,15 @@ Instead of learning only from real experience, teach Mario to:
 1. Build an **internal model** of how the game works
 2. **Imagine** future scenarios inside this model
 3. Practice and improve his policy inside his imagination
-4. Occasionally update the model with real experience
+4. Periodically collect small batches of real experience to keep the model accurate
 
 This is called **model-based reinforcement learning**.
+
+For example, for every 100 real frames Mario plays:
+- PPO trains on those 100 frames, then discards them
+- DreamerV3 trains on those 100 frames, PLUS 10,000+ imagined frames generated by the world model
+
+The world model is updated **regularly** with real data to stay accurate, but most learning happens in imagination. This achieves 10-100x better sample efficiency!
 
 ---
 
@@ -258,26 +603,63 @@ This is called **model-based reinforcement learning**.
 
 **Three Core Components:**
 
-**1. World Model**
-Learns to simulate the game environment in a compact **latent space**:
+**1. World Model (RSSM - Recurrent State Space Model)**
 
-- **Encoder** $q_\phi(z_t | o_t)$: Compress observation $o_t$ into latent state $z_t$
-- **Dynamics** $p_\phi(z_{t+1} | z_t, a_t)$: Predict next latent state given action
-- **Decoder** $p_\phi(o_t | z_t)$: Reconstruct observation from latent state
-- **Reward Predictor** $p_\phi(r_t | z_t)$: Predict reward
-- **Continue Predictor** $p_\phi(c_t | z_t)$: Predict if episode continues
+The world model learns to simulate the environment using a **two-part latent state**:
+- **$h_t$**: Deterministic recurrent state (captures deterministic long-term dependencies)
+- **$z_t$**: Stochastic latent state (captures stochastic variations)
+
+The complete latent representation is the pair $(h_t, z_t)$.
+
+**Core Components:**
+
+- **Recurrent Model**: $h_{t+1} = f_\phi(h_t, z_t, a_t)$
+  - Deterministic GRU that updates the recurrent state
+  - Inputs: previous recurrent state $h_t$, stochastic state $z_t$, action $a_t$
+  - Output: next recurrent state $h_{t+1}$
+
+- **Representation Model (Posterior)**: $q_\phi(z_t | h_t, o_t)$
+  - Used during **training** with real observations
+  - Infers stochastic state from recurrent state AND observation
+  - Encodes observation into the latent dynamics
+
+- **Transition Model (Prior)**: $p_\phi(z_t | h_t)$
+  - Used during **imagination** (no observations available)
+  - Predicts stochastic state from only the recurrent state
+  - Enables imagining future states without real observations
+
+- **Decoder**: $p_\phi(o_t | h_t, z_t)$
+  - Reconstructs observation from the full latent state
+  - Trained to minimize reconstruction loss
+
+- **Reward Predictor**: $p_\phi(r_t | h_t, z_t)$
+  - Predicts reward from the latent state
+  - Enables reward estimation during imagination
+
+- **Continue Predictor**: $p_\phi(c_t | h_t, z_t)$
+  - Predicts if episode continues (discount factor)
+  - Handles episode termination in imagination
 
 **2. Imagination Rollouts**
-Starting from a real latent state $z_t$, use the world model to generate **imaginary trajectories**:
+
+Starting from a real latent state $(h_t, z_t)$, use the world model to generate **imaginary trajectories**:
 
 $$
-z_t \xrightarrow{a_t} z_{t+1} \xrightarrow{a_{t+1}} z_{t+2} \xrightarrow{a_{t+2}} \cdots
+(h_t, z_t) \xrightarrow{a_t} (h_{t+1}, z_{t+1}) \xrightarrow{a_{t+1}} (h_{t+2}, z_{t+2}) \xrightarrow{a_{t+2}} \cdots
 $$
+
+**How imagination works:**
+1. Sample action $a_t$ from policy $\pi_\theta(a|h_t, z_t)$
+2. Update recurrent state: $h_{t+1} = f_\phi(h_t, z_t, a_t)$
+3. Sample stochastic state from **prior**: $z_{t+1} \sim p_\phi(\cdot | h_{t+1})$ (no observation needed!)
+4. Predict reward: $\hat{r}_t = p_\phi(r_t | h_t, z_t)$
+5. Predict continuation: $\hat{c}_t = p_\phi(c_t | h_t, z_t)$
+6. Repeat for many timesteps
 
 These trajectories are generated entirely inside the model — no real environment interaction needed.
 
 **3. Actor-Critic in Latent Space**
-Train the policy $\pi_\theta(a|z)$ and value function $V_\psi(z)$ on imagined trajectories:
+Train the policy $\pi_\theta(a|h, z)$ and value function $V_\psi(h, z)$ on imagined trajectories:
 
 - **Actor objective**: Maximize imagined returns
 - **Critic objective**: Accurately predict imagined values
