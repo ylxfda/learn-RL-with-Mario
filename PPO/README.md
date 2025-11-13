@@ -63,13 +63,6 @@ python train_mario_ppo.py --configs defaults --logdir ./my_experiments/ppo_run1
 - The agent will train for 10,000,000 timesteps (or 100,000 in debug mode)
 - Evaluation runs every 100,000 timesteps
 - Checkpoints are saved every 100,000 timesteps in `logdir/mario_ppo/`
-- Training takes ~8-12 hours on RTX 3080 GPU
-
-**Key Differences from DreamerV3:**
-- PPO uses **32 parallel environments** for efficient on-policy data collection
-- Collects 128 steps × 32 envs = 4,096 transitions per update
-- Requires more environment timesteps but faster wall-clock time per update
-- More straightforward algorithm but less sample efficient
 
 ---
 
@@ -121,19 +114,7 @@ tensorboard --logdir ./logdir/mario_ppo
 
 **Images Tab (Evaluation Videos):**
 
-PPO records evaluation episodes as videos, showing the agent's behavior:
-
-<p align="center">
-  <img src="../assets/episode_002_reward_4093_steps_283.gif" alt="PPO agent playing Mario" width="400"/>
-</p>
-
-**What to Look For:**
-- **Early Training**: Random movements, frequent deaths
-- **Mid Training**: Learns to move right, avoid simple pits
-- **Late Training**: Consistent flag completion, optimal paths
-- **Success Indicator**: Agent consistently reaches flag in <300 steps
-
-The videos show up to 3 episodes side-by-side, helping you spot patterns in behavior.
+PPO records evaluation episodes as videos, showing the agent's behavior.
 
 ---
 
@@ -203,6 +184,16 @@ PPO is an **on-policy** policy gradient method that learns directly from experie
 | $r_t$ | (1,) | Reward received at time t | Distance traveled + 1000 for flag - penalties for dying |
 | $\text{done}_t$ | (1,) | Episode termination flag | 1 when Mario dies or reaches flag, 0 otherwise |
 
+**Action Button Explanation:**
+- **A button**: Jump button (NES controller)
+- **B button**: Run/sprint button (also shoots fireballs when powered up)
+- **right**: D-pad direction to move right
+- **left**: D-pad direction to move left
+- **right+A**: Move right while jumping (simultaneous button press)
+- **right+B**: Run right (simultaneous button press)
+- **right+A+B**: Run right while jumping (all three pressed simultaneously)
+- **NOOP**: No operation (no buttons pressed)
+
 ### 1.2 Policy and Value Function
 
 | Symbol | Type | Description | Purpose |
@@ -251,7 +242,7 @@ $$\pi_\theta(a|s) = \text{Categorical}(\text{logits}_\theta(s))$$
 **Architecture:** CNN + MLP
 
 ```
-Input: s_t ∈ R^(64×64×3)
+Input: s_t ∈ R^(64×64×3) # Game scence
   ↓
 Conv2d(32, 8×8, stride=4) + ReLU  →  (16×16×32)
   ↓
@@ -334,9 +325,56 @@ Linear(1)  →  V_φ(s_t) ∈ R
 
 Generalized Advantage Estimation (Schulman et al., 2016) computes advantages using exponentially-weighted average of TD residuals:
 
+**Equation 1: TD Residual (Temporal Difference Error)**
+
 $$\delta_t = r_t + \gamma \cdot V(s_{t+1}) \cdot (1 - \text{done}_t) - V(s_t)$$
 
+**What this means:**
+- $\delta_t$ measures the **one-step prediction error** of the value function
+- $r_t + \gamma \cdot V(s_{t+1})$: **TD target** = immediate reward + discounted future value
+- $V(s_t)$: **Current prediction** = what the critic thinks this state is worth
+- $(1 - \text{done}_t)$: **Terminal state handling** = 0 if episode ends (no future value), 1 otherwise
+
+**Intuition:**
+- If $\delta_t > 0$: The state was **better than expected** (positive surprise)
+- If $\delta_t < 0$: The state was **worse than expected** (negative surprise)
+- If $\delta_t \approx 0$: The value function is **accurate** (no surprise)
+
+**Why multiply by $(1 - \text{done}_t)$?**
+- When episode ends ($\text{done}_t = 1$), there is no next state
+- Future value should be 0: $V(s_{t+1}) \cdot (1-1) = 0$
+- Only the immediate reward $r_t$ matters for terminal states
+
+---
+
+**Equation 2: GAE Advantage Estimate**
+
 $$\hat{A}_t = \delta_t + (\gamma\lambda) \cdot \delta_{t+1} + (\gamma\lambda)^2 \cdot \delta_{t+2} + \ldots$$
+
+**What this means:**
+- $\hat{A}_t$ is a **weighted sum of all future TD errors** from time $t$ onwards
+- Each future error $\delta_{t+k}$ is weighted by $(\gamma\lambda)^k$
+- Errors further in the future get exponentially smaller weights
+
+**Intuition:**
+- **Don't just look at one step**: A single $\delta_t$ can be noisy
+- **Look at multiple steps**: Average many TD errors to reduce variance
+- **Weight nearby steps more**: Recent errors are more relevant than distant ones
+
+**Why this exponential weighting?**
+- $\lambda = 1$: Use **all future errors** equally → low bias, high variance (like Monte Carlo)
+- $\lambda = 0$: Use **only current error** → high bias, low variance (like 1-step TD)
+- $\lambda = 0.95$: **Balanced tradeoff** → moderate bias and variance
+
+**Expanded form:**
+$$\hat{A}_t = \delta_t + (\gamma\lambda) \cdot \delta_{t+1} + (\gamma\lambda)^2 \cdot \delta_{t+2} + (\gamma\lambda)^3 \cdot \delta_{t+3} + \ldots$$
+
+**Weights decay example** (with $\gamma=0.99$, $\lambda=0.95$):
+- Step $t$: weight = $1.0$ (100%)
+- Step $t+1$: weight = $0.99 \times 0.95 = 0.94$ (94%)
+- Step $t+2$: weight = $(0.99 \times 0.95)^2 = 0.88$ (88%)
+- Step $t+5$: weight = $(0.99 \times 0.95)^5 = 0.68$ (68%)
+- Step $t+10$: weight = $(0.99 \times 0.95)^{10} = 0.47$ (47%)
 
 **Parameters:**
 - $\gamma = 0.99$: Discount factor for future rewards
@@ -349,11 +387,75 @@ $$\hat{A}_t = \delta_t + (\gamma\lambda) \cdot \delta_{t+1} + (\gamma\lambda)^2 
 
 **Mario Example:**
 
-t=0: r=1, $V(s_0)=100$, $V(s_1)=110$ → $\delta_0 = 1 + 0.99 \cdot 110 - 100 = 9.9$
-t=1: r=1, $V(s_1)=110$, $V(s_2)=120$ → $\delta_1 = 1 + 0.99 \cdot 120 - 110 = 9.8$
-t=2: r=1000, done=1 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ $\delta_2 = 1000 + 0 - 120 = 880$
+Consider a 3-step episode where Mario reaches the flag:
 
-$\hat{A}_0 = 9.9 + 0.95 \cdot 0.99 \cdot 9.8 + (0.95 \cdot 0.99)^2 \cdot 880 \approx 800$ (propagated flag reward)
+**Step-by-step breakdown:**
+
+**Timestep t=0:** Mario moving forward
+- State value: $V(s_0) = 100$
+- Action: "right"
+- Reward: $r_0 = 1$ (distance traveled)
+- Next state value: $V(s_1) = 110$
+- Done: $\text{done}_0 = 0$ (episode continues)
+- **TD error:** $\delta_0 = 1 + 0.99 \times 110 \times (1-0) - 100 = \boxed{9.9}$
+
+**Timestep t=1:** Mario still moving forward
+- State value: $V(s_1) = 110$
+- Action: "right"
+- Reward: $r_1 = 1$ (distance traveled)
+- Next state value: $V(s_2) = 120$
+- Done: $\text{done}_1 = 0$ (episode continues)
+- **TD error:** $\delta_1 = 1 + 0.99 \times 120 \times (1-0) - 110 = \boxed{9.8}$
+
+**Timestep t=2:** Mario reaches the flag!
+- State value: $V(s_2) = 120$
+- Action: "right"
+- Reward: $r_2 = 1000$ (flag bonus!)
+- Next state value: N/A (episode ends)
+- Done: $\text{done}_2 = 1$ (episode terminates)
+- **TD error:** $\delta_2 = 1000 + 0.99 \times V(s_3) \times (1-1) - 120 = 1000 + 0 - 120 = \boxed{880}$
+
+**Computing GAE advantages (backward recursion as implemented in code):**
+
+The code computes advantages **backward in time** using the recursive formula:
+
+$$\hat{A}_t = \delta_t + (\gamma\lambda) \cdot (1 - \text{done}_t) \cdot \hat{A}_{t+1}$$
+
+This is more efficient than the forward formula (O(T) vs O(T²)) and naturally handles episode boundaries.
+- **Forward**: For each timestep t, must sum all future TD errors from t to T
+  - t=0: sum T terms, t=1: sum T-1 terms, ..., total = T + (T-1) + ... + 1 = T(T+1)/2 = **O(T²)**
+- **Backward**: Single pass from T to 0, accumulating advantages
+  - Each timestep: one addition operation, total = T operations = **O(T)**
+
+**Backward computation (from t=2 to t=0):**
+
+**Step 1: Process t=2 (last timestep, start here)**
+- Initialize: $\hat{A}_3 = 0$ (no future advantage beyond episode end)
+- Compute: $\hat{A}_2 = \delta_2 + (\gamma\lambda) \cdot (1 - \text{done}_2) \cdot \hat{A}_3$
+- $\hat{A}_2 = 880 + (0.99 \times 0.95) \cdot (1-1) \cdot 0 = 880 + 0 = \boxed{880}$
+- The $(1 - \text{done}_2) = 0$ term zeros out future advantages since episode ends
+
+**Step 2: Process t=1 (working backward)**
+- Compute: $\hat{A}_1 = \delta_1 + (\gamma\lambda) \cdot (1 - \text{done}_1) \cdot \hat{A}_2$
+- $\hat{A}_1 = 9.8 + (0.99 \times 0.95) \cdot (1-0) \cdot 880$
+- $\hat{A}_1 = 9.8 + 0.9405 \cdot 880 = 9.8 + 827.64 = \boxed{837.44}$
+
+**Step 3: Process t=0 (final step, working backward)**
+- Compute: $\hat{A}_0 = \delta_0 + (\gamma\lambda) \cdot (1 - \text{done}_0) \cdot \hat{A}_1$
+- $\hat{A}_0 = 9.9 + (0.99 \times 0.95) \cdot (1-0) \cdot 837.44$
+- $\hat{A}_0 = 9.9 + 0.9405 \cdot 837.44 = 9.9 + 787.56 = \boxed{797.46} \approx 800$
+
+**Verification (equivalent forward formula):**
+
+The result is identical to the forward formula:
+$$\hat{A}_0 = \delta_0 + (\gamma\lambda) \cdot \delta_1 + (\gamma\lambda)^2 \cdot \delta_2 = 9.9 + 9.2 + 778.4 = 797.5 \approx 800$$
+
+**Key insight:** Even though the immediate reward at $t=0$ was just +1, the advantage $\hat{A}_0 \approx 800$ is very high because GAE propagates the large positive surprise from reaching the flag ($\delta_2 = 880$) **backwards through time**. This tells the policy: "The action at $t=0$ was great because it eventually led to the flag!"
+
+**Why backward computation?**
+- **Efficiency**: O(T) single pass vs O(T²) for forward computation
+- **Natural terminal handling**: $(1-\text{done}_t)$ automatically zeros out advantages beyond episode end
+- **Code simplicity**: Single loop with accumulation variable
 
 ---
 
@@ -376,25 +478,6 @@ $\hat{A}_0 = 9.9 + 0.95 \cdot 0.99 \cdot 9.8 + (0.95 \cdot 0.99)^2 \cdot 880 \ap
 - Class: [`SubprocVecEnv`](../envs/vec_mario.py#L72) in [vec_mario.py](../envs/vec_mario.py)
 - Helper: [`make_vec_mario_env()`](../envs/vec_mario.py#L184)
 - Each process communicates via pipes
-
-**Mario Example:**
-```python
-# Create 32 parallel environments
-envs = make_vec_mario_env(num_envs=32, seed=0)
-
-# Step all environments at once
-actions = agent.get_actions(obs)  # (32,)
-obs, rewards, dones, infos = envs.step(actions)
-# obs: (32, 64, 64, 3) - batch of observations
-# rewards: (32,) - batch of rewards
-# dones: (32,) - batch of done flags
-```
-
-**Why PPO Needs This:**
-- On-policy: Can't reuse old data like DreamerV3
-- Needs 4,096+ transitions per update
-- Single environment too slow (128 steps = 2-3 minutes)
-- 32 environments: 128 steps = 4-5 seconds
 
 ---
 
@@ -452,7 +535,7 @@ policy_loss2 = advantage * torch.clamp(ratio, 1 - clip_coef, 1 + clip_coef)
 policy_loss = -torch.min(policy_loss1, policy_loss2).mean()
 ```
 
-**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L144) in [ppo_agent.py](ppo_agent.py)
+**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L277-L285) in [ppo_agent.py](ppo_agent.py)
 
 **Mario Example:**
 
@@ -480,10 +563,41 @@ where $V^{target}_t = \hat{A}_t + V_{old}(s_t)$ (advantage + old value = return 
 
 **Purpose:** Trains the critic to accurately predict returns, which is essential for computing good advantage estimates.
 
-**Why Not Direct Return?**
-- Returns have high variance
-- Value target ($\hat{A} + V_{old}$) is lower variance due to GAE
-- Better gradient estimates
+**Understanding the components:**
+
+**1. What is $V_\phi(s_t)$?**
+- $V_\phi(s_t)$ is the **current value prediction** from the critic network
+- $\phi$ represents the critic's neural network parameters (weights)
+- This is what the critic **currently thinks** the state is worth
+- It's computed by forward-passing $s_t$ through the critic network
+- During training, we update $\phi$ to make these predictions more accurate
+
+**2. Why is $V^{target}_t = \hat{A}_t + V_{old}(s_t)$?**
+
+This comes from the definition of advantage:
+
+$$\hat{A}_t = \text{actual return} - V_{old}(s_t)$$
+
+Rearranging:
+$$\text{actual return} = \hat{A}_t + V_{old}(s_t) = V^{target}_t$$
+
+**Intuitive explanation:**
+- $V_{old}(s_t)$: What the **old critic** thought this state was worth (baseline)
+- $\hat{A}_t$: How much **better or worse** things turned out compared to that baseline
+- $\hat{A}_t + V_{old}(s_t)$: The **actual observed return** = baseline + surprise
+
+**Example:**
+- Old critic predicted: $V_{old}(s_t) = 100$
+- Things went better than expected: $\hat{A}_t = +50$
+- Target for new critic: $V^{target}_t = 100 + 50 = 150$
+- The new critic should learn that this state is actually worth 150, not 100
+
+**Why not use actual Monte Carlo returns directly?**
+- Pure Monte Carlo returns have **high variance** (noisy)
+- GAE advantages $\hat{A}_t$ are **lower variance** (smoothed through exponential weighting)
+- Using $\hat{A}_t + V_{old}$ gives us a **bias-variance tradeoff**
+- This is more stable for training than raw returns
+- Better gradient estimates for policy updates
 
 **Implementation:**
 ```python
@@ -493,7 +607,7 @@ value_target = advantages + old_values  # Returns estimate
 value_loss = F.mse_loss(value_pred, value_target.detach())
 ```
 
-**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L161) in [ppo_agent.py](ppo_agent.py)
+**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L291) in [ppo_agent.py](ppo_agent.py)
 
 **Mario Example:**
 
@@ -535,7 +649,7 @@ entropy = dist.entropy().mean()
 total_loss = policy_loss + vf_coef * value_loss - ent_coef * entropy
 ```
 
-**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L168) in [ppo_agent.py](ppo_agent.py)
+**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L296) in [ppo_agent.py](ppo_agent.py)
 
 **Mario Example:**
 
@@ -570,13 +684,13 @@ where:
 - $c_2$ too high: Too much exploration, slow learning
 - $c_2$ too low: Premature convergence, local optima
 
-**Implementation:** [`PPOAgent.update()`](ppo_agent.py#L170) in [ppo_agent.py](ppo_agent.py)
+**Implementation:** [`PPOAgent.update()`](ppo_agent.py#L301-L305) in [ppo_agent.py](ppo_agent.py)
 
 ---
 
 ## 4. Training Process
 
-This section describes the PPO training loop and how it differs from DreamerV3.
+This section describes the PPO training loop.
 
 ### 4.1 High-Level Algorithm Overview
 
@@ -593,7 +707,7 @@ PPO follows an on-policy actor-critic loop:
    - Normalize advantages per batch
 
 3. **Update Policy and Value Function**
-   - For K=4 epochs:
+   - For K epochs:
      - Shuffle data into mini-batches of size 256
      - For each mini-batch:
        - Compute probability ratio $r_t$
@@ -804,34 +918,6 @@ while global_step < 10_000_000:  # 10M timesteps
             'optimizer_state_dict': optimizer.state_dict(),
         }, logdir / f'checkpoint_{global_step}.pt')
 ```
-
----
-
-### 4.3 Key Implementation Details
-
-**Gradient Flow:**
-- Policy loss: Gradients flow through actor
-- Value loss: Gradients flow through critic
-- Both share CNN features (efficient feature learning)
-
-**Efficiency:**
-- 32 parallel environments: ~4-5 seconds per rollout
-- 4 epochs × 16 mini-batches = 64 updates per rollout
-- Total: ~10-15 seconds per update cycle
-- Much faster than DreamerV3 per update, but needs more data
-
-**Memory Management:**
-- Rollout buffer: 128 × 32 = 4,096 transitions
-- Mini-batch: 256 transitions
-- GPU memory: ~2-3 GB for model + data
-- Much lower memory than DreamerV3's replay buffer
-
-**On-Policy Constraint:**
-- Data discarded after each update
-- Must collect fresh data with current policy
-- No replay buffer (unlike DreamerV3)
-- This is why we need 32 parallel environments
-
 ---
 
 ## 5. Implementation Tricks
@@ -858,7 +944,7 @@ $$\hat{A}_{\text{normalized}} = \frac{\hat{A} - \text{mean}(\hat{A})}{\text{std}
 advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 ```
 
-**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L153) in [ppo_agent.py](ppo_agent.py)
+**Code Location:** [`RolloutBuffer.get_batches()`](rollout_buffer.py#L320) in [rollout_buffer.py](rollout_buffer.py)
 
 ---
 
@@ -880,7 +966,7 @@ if ||g|| > max_norm:
 torch.nn.utils.clip_grad_norm_(actor_critic.parameters(), max_norm=0.5)
 ```
 
-**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L172) in [ppo_agent.py](ppo_agent.py)
+**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L312) (actor) and [`PPOAgent.update()`](ppo_agent.py#L318) (critic) in [ppo_agent.py](ppo_agent.py)
 
 **Why it works:**
 - Limits maximum step size in parameter space
@@ -960,57 +1046,12 @@ with torch.no_grad():
         print(f"Warning: High KL divergence: {approx_kl:.4f}")
 ```
 
-**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L157) in [ppo_agent.py](ppo_agent.py)
+**Code Location:** [`PPOAgent.update()`](ppo_agent.py#L325) in [ppo_agent.py](ppo_agent.py)
 
 **Why it works:**
 - Prevents policy from changing too rapidly
 - Maintains on-policy assumption (data collected with $\pi_{old}$)
 - Complements clipping for conservative updates
-
----
-
-### 5.6 Explained Variance
-
-**Purpose:** Diagnostic metric showing how well value function predicts returns.
-
-**Formula:**
-
-$$\text{EV} = 1 - \frac{\text{Var}(\text{returns} - \text{values})}{\text{Var}(\text{returns})}$$
-
-**Interpretation:**
-- $\text{EV} \approx 1.0$: Perfect predictions
-- $\text{EV} \approx 0.0$: No better than predicting mean
-- $\text{EV} < 0.0$: Worse than predicting mean (bad critic)
-
-**Target:** Should be > 0.7 for good training
-
-**Implementation:**
-```python
-y_pred = values
-y_true = returns
-var_y = torch.var(y_true)
-explained_var = 1 - torch.var(y_true - y_pred) / var_y
-```
-
-**Why it matters:**
-- Low EV means advantages are noisy
-- High EV means good advantage estimates
-- Useful for debugging value function issues
-
----
-
-### Summary of Implementation Tricks
-
-| Trick | Purpose | Key Parameters | Implementation |
-|-------|---------|----------------|----------------|
-| **Clipped Objective** | Prevent large policy updates | ε=0.2 | [ppo_agent.py:150](ppo_agent.py#L150) |
-| **Advantage Normalization** | Stabilize learning | per-batch | [ppo_agent.py:153](ppo_agent.py#L153) |
-| **Gradient Clipping** | Prevent exploding gradients | max_norm=0.5 | [ppo_agent.py:172](ppo_agent.py#L172) |
-| **Orthogonal Init** | Better gradient flow | gains=[√2, 0.01, 1.0] | [networks.py:90](networks.py#L90) |
-| **GAE** | Reduce advantage variance | λ=0.95 | [rollout_buffer.py:57](rollout_buffer.py#L57) |
-| **Entropy Bonus** | Encourage exploration | coef=0.03 | [ppo_agent.py:168](ppo_agent.py#L168) |
-| **Vectorized Envs** | Efficient data collection | n=32 | [vec_mario.py:184](../envs/vec_mario.py#L184) |
-| **Multiple Epochs** | Better sample efficiency | K=4 | [ppo_agent.py:125](ppo_agent.py#L125) |
 
 ---
 
@@ -1022,7 +1063,3 @@ explained_var = 1 - torch.var(y_true - y_pred) / var_y
 4. **CleanRL Implementation**: [ppo.py](https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/ppo.py)
 
 ---
-
-**Last Updated:** 2024
-
-For questions about this implementation, please refer to the papers or explore the linked code sections.
