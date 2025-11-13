@@ -2,7 +2,7 @@
 
 **Paper Reference**: [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347) (Schulman et al., 2017)
 
-This document provides both a practical usage guide for training and evaluating agents, as well as comprehensive implementation details of the PPO algorithm in this codebase, using Super Mario Bros as a concrete example.
+This document provides both a practical usage guide for training and evaluating the PPO model, as well as comprehensive implementation details in this codebase.
 
 ---
 

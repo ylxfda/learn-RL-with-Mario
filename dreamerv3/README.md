@@ -2,7 +2,7 @@
 
 **Paper Reference**: [Mastering Diverse Domains through World Models](https://arxiv.org/abs/2301.04104) (Hafner et al., 2023)
 
-This document provides both a practical usage guide for training and evaluating agents, as well as comprehensive implementation details of the DreamerV3 algorithm in this codebase, using Super Mario Bros as a concrete example.
+This document provides both a practical usage guide for training and evaluating the Dreamer v3 model, as well as comprehensive implementation details in this codebase.
 
 ---
 
@@ -155,10 +155,10 @@ DreamerV3 operates in a latent space where it learns compact representations of 
 
 | Symbol | Dimension | Description | Mario Example |
 |--------|-----------|-------------|---------------|
-| **o_t** | (64, 64, 3) | Raw observation (image) at time t | Screenshot of Mario game (64×64 RGB image) showing Mario, enemies, blocks, etc. |
-| **a_t** | (7,) | Action taken at time t (one-hot) | One of 7 discrete actions: NOOP, right, right+A, right+B, right+A+B, A (jump), left |
-| **r_t** | (1,) | Reward received at time t | Distance traveled + 1000 for reaching flag - penalties for dying |
-| **c_t** | (1,) | Continuation flag (1 - terminal) | 0 when Mario dies or reaches flag, 1 otherwise |
+| $o_t$ | (64, 64, 3) | Raw observation (image) at time t | Screenshot of Mario game (64×64 RGB image) showing Mario, enemies, blocks, etc. |
+| $a_t$ | (7,) | Action taken at time t (one-hot) | One of 7 discrete actions: NOOP, right, right+A, right+B, right+A+B, A (jump), left |
+| $r_t$ | (1,) | Reward received at time t | Distance traveled + 1000 for reaching flag - penalties for dying |
+| $c_t$ | (1,) | Continuation flag (1 - terminal) | 0 when Mario dies or reaches flag, 1 otherwise |
 
 ### 1.2 Latent States (RSSM)
 
@@ -166,15 +166,15 @@ The core of DreamerV3 is the Recurrent State Space Model (RSSM), which maintains
 
 | Symbol | Dimension | Description | Mario Example |
 |--------|-----------|-------------|---------------|
-| **h_t** | (512,) | **Deterministic state** (recurrent hidden state from GRU) | Captures temporal dependencies: e.g., Mario's velocity, recent trajectory, which direction he's moving |
-| **z_t** | (32, 32) | **Stochastic state** (32 categorical distributions, each with 32 classes) | Captures stochastic aspects: e.g., exact positions of enemies, coin locations, randomness in enemy movements |
-| **e_t** | (4096,) | **Embedding** (encoded observation) | Compressed representation of the 64×64×3 image capturing visual features like edges, textures, object locations |
+| $h_t$ | (512,) | **Deterministic state** (recurrent hidden state from GRU) | Captures temporal dependencies: e.g., Mario's velocity, recent trajectory, which direction he's moving |
+| $z_t$ | (32, 32) | **Stochastic state** (32 categorical distributions, each with 32 classes) | Captures stochastic aspects: e.g., exact positions of enemies, coin locations, randomness in enemy movements |
+| $e_t$ | (4096,) | **Embedding** (encoded observation) | Compressed representation of the 64×64×3 image capturing visual features like edges, textures, object locations |
 
 ### 1.3 Combined Features
 
 | Symbol | Dimension | Description | Usage |
 |--------|-----------|-------------|-------|
-| **s_t = [z_t; h_t]** | (1536,) | **Feature vector** (concatenation of flattened stochastic and deterministic states) | Input to all prediction heads (decoder, reward, continuation) and actor-critic networks |
+| $s_t = [z_t; h_t]$ | (1536,) | **Feature vector** (concatenation of flattened stochastic and deterministic states) | Input to all prediction heads (decoder, reward, continuation) and actor-critic networks |
 
 **Dimensionality breakdown:**
 - Stochastic: 32 categoricals × 32 classes = 1024 dimensions (one-hot encoded)
@@ -185,13 +185,13 @@ The core of DreamerV3 is the Recurrent State Space Model (RSSM), which maintains
 
 | Symbol | Type | Description | Purpose |
 |--------|------|-------------|---------|
-| **q(z_t \| h_t, o_t)** | Posterior | Belief about latent state given observation | Used during training to infer true state from observations (closed-loop) |
-| **p(z_t \| h_t)** | Prior | Predicted latent state without observation | Used during imagination/planning (open-loop) |
-| **p(r_t \| s_t)** | Reward predictor | Predicted reward distribution | Enables planning by predicting future rewards |
-| **p(c_t \| s_t)** | Continue predictor | Predicted continuation probability | Predicts whether episode continues (for discount factors) |
-| **π(a_t \| s_t)** | Policy | Action distribution | Agent's policy for selecting actions |
+| $q(z_t \mid h_t, o_t)$ | Posterior | Belief about latent state given observation | Used during training to infer true state from observations (closed-loop) |
+| $p(z_t \mid h_t)$ | Prior | Predicted latent state without observation | Used during imagination/planning (open-loop) |
+| $p(r_t \mid s_t)$ | Reward predictor | Predicted reward distribution | Enables planning by predicting future rewards |
+| $p(c_t \mid s_t)$ | Continue predictor | Predicted continuation probability | Predicts whether episode continues (for discount factors) |
+| $\pi(a_t \mid s_t)$ | Policy | Action distribution | Agent's policy for selecting actions |
 
-### 1.5 Time Subscripts Convention
+### 1.5 Temporal Notation
 
 Throughout this document:
 - **t** denotes the current timestep
@@ -214,9 +214,8 @@ DreamerV3 consists of several neural network components that work together to le
 ### 2.1 Encoder
 
 **Mathematical Definition:**
-```
-e_t = f_enc(o_t)
-```
+
+$$e_t = f_{enc}(o_t)$$
 
 **Purpose:** Maps high-dimensional observations to compact embeddings.
 
@@ -227,7 +226,7 @@ Input: o_t ∈ ℝ^(64×64×3)
   ↓ Conv2d(64 channels, stride=2) + LayerNorm + SiLU  → (16×16×64)
   ↓ Conv2d(128 channels, stride=2) + LayerNorm + SiLU → (8×8×128)
   ↓ Conv2d(256 channels, stride=2) + LayerNorm + SiLU → (4×4×256)
-  ↓ Flatten                                            → e_t ∈ ℝ^4096
+  ↓ Flatten → e_t ∈ ℝ^4096
 ```
 
 **Implementation:**
@@ -245,10 +244,10 @@ The RSSM is the **core dynamics model** that learns to predict future states. It
 **Mathematical Definition:**
 
 **Deterministic transition (GRU):**
-```
-h_t = f_θ(h_{t-1}, z_{t-1}, a_{t-1})
-```
-where f_θ is a GRU (Gated Recurrent Unit) cell.
+
+$$h_t = f_\theta(h_{t-1}, z_{t-1}, a_{t-1})$$
+
+where $f_\theta$ is a GRU (Gated Recurrent Unit) cell.
 
 **Stochastic transition:**
 ```
@@ -287,8 +286,8 @@ z_t ∈ {0,1}^(32×32)   (32 independent categorical distributions, each with 32
 - Initialization: [world_model.py:83](../dreamerv3/world_model.py#L83)
 
 **Mario Example:**
-- **h_t** (deterministic): Tracks Mario's momentum, direction, recent movement patterns
-- **z_t** (stochastic): Captures uncertain elements like enemy positions that can't be fully predicted from previous states alone
+- $h_t$ (deterministic): Tracks Mario's momentum, direction, recent movement patterns
+- $z_t$ (stochastic): Captures uncertain elements like enemy positions that can't be fully predicted from previous states alone
 - **Prior** predicts next frame without seeing it (useful for planning)
 - **Posterior** incorporates actual observation to correct predictions
 
@@ -297,9 +296,8 @@ z_t ∈ {0,1}^(32×32)   (32 independent categorical distributions, each with 32
 ### 2.3 Decoder
 
 **Mathematical Definition:**
-```
-ô_t = f_dec(s_t) = f_dec([z_t; h_t])
-```
+
+$$\hat{o}_t = f_{dec}(s_t) = f_{dec}([z_t; h_t])$$
 
 **Purpose:** Reconstructs observations from latent features to ensure the latent representation captures all relevant information.
 
@@ -311,23 +309,22 @@ Input: s_t ∈ ℝ^1536
   ↓ ConvTranspose2d(128, stride=2) + LayerNorm + SiLU → (8×8×128)
   ↓ ConvTranspose2d(64, stride=2) + LayerNorm + SiLU  → (16×16×64)
   ↓ ConvTranspose2d(32, stride=2) + LayerNorm + SiLU  → (32×32×32)
-  ↓ ConvTranspose2d(3, stride=2)                       → ô_t ∈ ℝ^(64×64×3)
+  ↓ ConvTranspose2d(3, stride=2)  → ô_t ∈ ℝ^(64×64×3)
 ```
 
 **Implementation:**
 - Class: [`MultiDecoder`](../dreamerv3/networks/encoder_decoder.py#L155) wraps [`ConvDecoder`](../dreamerv3/networks/encoder_decoder.py#L415)
 - Initialization: [world_model.py:112](../dreamerv3/world_model.py#L112)
 
-**Mario Example:** Reconstructs the 64×64×3 game screenshot from the latent state. If the reconstruction is accurate, it means s_t contains sufficient information about the game state.
+**Mario Example:** Reconstructs the 64×64×3 game screenshot from the latent state. If the reconstruction is accurate, it means $s_t$ contains sufficient information about the game state.
 
 ---
 
 ### 2.4 Reward Predictor
 
 **Mathematical Definition:**
-```
-r̂_t ~ p(r_t | s_t) = DiscretizedDistribution(MLP(s_t))
-```
+
+$$\hat{r}_t \sim p(r_t \mid s_t) = \text{DiscretizedDistribution}(\text{MLP}(s_t))$$
 
 **Purpose:** Predicts the reward that will be received in each state, enabling the agent to plan without environment interaction.
 
@@ -341,6 +338,22 @@ Input: s_t ∈ ℝ^1536
   ↓ DiscretizedDistribution          → p(r_t | s_t)
 ```
 
+**Why Discretize Rewards (Classification vs Regression)?**
+
+Instead of directly predicting a single reward value $\hat{r}_t \in \mathbb{R}$ (regression), DreamerV3 predicts a **categorical distribution over 255 discrete buckets** (classification):
+
+1. **Better Gradients**: Classification provides stronger, more stable gradients than MSE regression
+2. **Uncertainty Representation**: Can represent multimodal distributions and uncertainty
+3. **Outlier Robustness**: Bounded output space prevents extreme predictions
+4. **Empirical Performance**: Consistently outperforms regression in practice
+
+**How It Works:**
+
+1. MLP outputs 255 logits (one per bucket)
+2. Apply softmax to get probability distribution: $p_i = \text{softmax}(\text{logits})_i$
+3. Expected reward: $\mathbb{E}[r] = \text{symexp}(\sum_{i=1}^{255} p_i \cdot \text{bucket}_i)$
+4. During training, use two-bucket interpolation (see Section 5.2) for continuous target values
+
 **Output Distribution:** Discretized distribution in symlog space
 - 255 buckets spanning [-20, 20] in symlog space
 - Predicts categorical distribution over buckets
@@ -351,21 +364,15 @@ Input: s_t ∈ ℝ^1536
 - Forward pass: Uses [`MLP`](../dreamerv3/networks/encoder_decoder.py#L587) with `dist="symlog_disc"`
 - Distribution: [`DiscDist`](../dreamerv3/utils/distributions.py#L178)
 
-**Mario Example:** Predicts reward for current state:
-- Small positive reward (~1.0) for moving right
-- Large positive reward (~1000) when reaching the flag
-- Negative reward for dying or time running out
-
 ---
 
 ### 2.5 Continuation Predictor
 
 **Mathematical Definition:**
-```
-ĉ_t ~ p(c_t | s_t) = Bernoulli(sigmoid(MLP(s_t)))
-```
 
-where c_t = 1 - terminal_t (i.e., 1 if episode continues, 0 if it ends).
+$$\hat{c}_t \sim p(c_t \mid s_t) = \text{Bernoulli}(\text{sigmoid}(\text{MLP}(s_t)))$$
+
+where $c_t = 1 - \text{terminal}_t$ (i.e., 1 if episode continues, 0 if it ends).
 
 **Purpose:** Predicts whether the episode will continue, used to compute proper discount factors during planning.
 
@@ -385,18 +392,17 @@ Input: s_t ∈ ℝ^1536
 - Distribution: [`Bernoulli`](../dreamerv3/utils/distributions.py#L481)
 
 **Mario Example:**
-- c_t ≈ 1.0 when Mario is alive and running
-- c_t ≈ 0.0 when Mario is about to die (falls in pit, touches enemy)
-- c_t ≈ 0.0 when Mario is about to reach the flag
+- $c_t \approx 1.0$ when Mario is alive and running
+- $c_t \approx 0.0$ when Mario is about to die (falls in pit, touches enemy)
+- $c_t \approx 0.0$ when Mario is about to reach the flag
 
 ---
 
 ### 2.6 Actor (Policy Network)
 
 **Mathematical Definition:**
-```
-a_t ~ π(a_t | s_t) = OneHotCategorical(softmax(MLP(s_t)))
-```
+
+$$a_t \sim \pi(a_t \mid s_t) = \text{OneHotCategorical}(\text{softmax}(\text{MLP}(s_t)))$$
 
 **Purpose:** The policy network that selects actions to maximize expected return.
 
@@ -419,7 +425,7 @@ Input: s_t ∈ ℝ^1536
 - Initialization: [actor_critic.py:69](../dreamerv3/actor_critic.py#L69)
 - Distribution: [`OneHotDist`](../dreamerv3/utils/distributions.py#L52)
 
-**Mario Example:** For a given state s_t, outputs probabilities over actions:
+**Mario Example:** For a given state $s_t$, outputs probabilities over actions:
 ```
 π(a_t | s_t) = [0.05, 0.70, 0.10, 0.05, 0.05, 0.03, 0.02]
                [NOOP, right, right+A, right+B, right+A+B, A, left]
@@ -431,11 +437,10 @@ Most likely action: "right" (keep moving forward).
 ### 2.7 Critic (Value Network)
 
 **Mathematical Definition:**
-```
-V̂(s_t) ~ p(V(s_t) | s_t) = DiscretizedDistribution(MLP(s_t))
-```
 
-**Purpose:** Estimates the expected cumulative return from state s_t following policy π.
+$$\hat{V}(s_t) \sim p(V(s_t) \mid s_t) = \text{DiscretizedDistribution}(\text{MLP}(s_t))$$
+
+**Purpose:** Estimates the expected cumulative return from state $s_t$ following policy $\pi$.
 
 **Architecture:** MLP with discretized output
 ```
@@ -458,10 +463,23 @@ Input: s_t ∈ ℝ^1536
 - Slow target network: [actor_critic.py:101](../dreamerv3/actor_critic.py#L101)
 
 **Mario Example:** For Mario standing near the flag:
-- V(s_t) ≈ 1000 (high value, about to win)
+- $V(s_t) \approx 1000$ (high value, about to win)
 
 For Mario about to fall in a pit:
-- V(s_t) ≈ -100 (low value, about to die)
+- $V(s_t) \approx -100$ (low value, about to die)
+
+---
+
+**During imagination:**
+- Start from a latent state $s_0$
+- Actor samples action: $a_0 \sim \pi(\cdot \mid s_0)$
+- RSSM predicts next state: $s_1$
+- **Reward Predictor** predicts: $\hat{r}_1$ (immediate reward)
+- **Critic** predicts: $\hat{V}(s_1)$ (future cumulative return)
+- Repeat for horizon steps (e.g., 15 steps)
+- Compute λ-returns: $\hat{V}_\lambda(s_0) = \hat{r}_1 + \gamma [\hat{r}_2 + \gamma [\hat{r}_3 + ... + \gamma \hat{V}(s_{15})]]$
+- Update actor to maximize $\hat{V}_\lambda(s_0)$
+- Update critic to predict $\hat{V}_\lambda(s_0)$ accurately
 
 ---
 
@@ -534,8 +552,8 @@ loss_reward = -reward_dist.log_prob(rewards)
 **Code Location:** [world_model.py:252](../dreamerv3/world_model.py#L252) in `_train()` method
 
 **Mario Example:**
-- True reward: r_t = 5.0 (moved right 5 pixels)
-- Predicted distribution: peaks around symlog(5.0) ≈ 1.95
+- True reward: $r_t = 5.0$ (moved right 5 pixels)
+- Predicted distribution: peaks around $\text{symlog}(5.0) \approx 1.95$
 - Loss: negative log probability of true reward under predicted distribution
 
 ---
@@ -566,9 +584,9 @@ loss_continue = -cont_dist.log_prob(continuations)
 **Code Location:** [world_model.py:252](../dreamerv3/world_model.py#L252) in `_train()` method
 
 **Mario Example:**
-- True continuation: c_t = 0 (Mario died)
-- Predicted probability: p(c_t=1) = 0.05 (model correctly predicts end)
-- Loss: -log(0.95) ≈ 0.05 (low loss, good prediction)
+- True continuation: $c_t = 0$ (Mario died)
+- Predicted probability: $p(c_t=1) = 0.05$ (model correctly predicts end)
+- Loss: $-\log(0.95) \approx 0.05$ (low loss, good prediction)
 
 ---
 
@@ -591,7 +609,7 @@ and $\text{sg}(\cdot)$ denotes stop_gradient.
 - $\alpha_{rep} = 0.1$
 
 **Purpose:**
-1. **Dynamics loss:** Encourages the prior p(z_t|h_t) to match the posterior, making imagination accurate
+1. **Dynamics loss:** Encourages the prior $p(z_t|h_t)$ to match the posterior, making imagination accurate
 2. **Representation loss:** Encourages the posterior to be predictable from the prior, preventing the encoder from using information that can't be predicted
 
 **Free Bits:** Both KL terms are clipped below a threshold (free_nats = 0.6) to prevent the posterior from collapsing to the prior.
@@ -720,8 +738,8 @@ value_loss = torch.mean(weights[:-1] * value_loss)
 - Slow target update: [actor_critic.py:499](../dreamerv3/actor_critic.py#L499) in `_update_slow_target()`
 
 **Mario Example:**
-- **Target:** V̂_λ(s_t) = 950 (λ-return computed from imagined trajectory)
-- **Prediction:** V(s_t) ≈ 900 (critic underestimates)
+- **Target:** $\hat{V}_\lambda(s_t) = 950$ (λ-return computed from imagined trajectory)
+- **Prediction:** $V(s_t) \approx 900$ (critic underestimates)
 - **Loss:** Negative log probability pushes predicted distribution toward 950
 
 ---
@@ -800,17 +818,17 @@ DreamerV3 training follows a model-based reinforcement learning loop:
 
 1. **Collect Experience (Closed-Loop Rollout)**
    - Interact with the real environment using current policy
-   - Store transitions (o_t, a_t, r_t, c_t) in replay buffer
-   - Uses posterior inference: q(z_t | h_t, o_t) to track true state
+   - Store transitions $(o_t, a_t, r_t, c_t)$ in replay buffer
+   - Uses posterior inference: $q(z_t \mid h_t, o_t)$ to track true state
 
 2. **Train World Model**
    - Sample batches of sequences from replay buffer
    - Train encoder, RSSM dynamics, and prediction heads (decoder, reward, continuation)
-   - Minimize: L_world = L_reconstruction + L_reward + L_continue + L_KL
+   - Minimize: $\mathcal{L}_{world} = \mathcal{L}_{reconstruction} + \mathcal{L}_{reward} + \mathcal{L}_{continue} + \mathcal{L}_{KL}$
 
 3. **Imagination (Open-Loop Rollout)**
    - Start from latent states inferred from real data
-   - Roll out policy in latent space using prior: p(z_t | h_t)
+   - Roll out policy in latent space using prior: $p(z_t \mid h_t)$
    - Generate imagined trajectories without environment interaction
    - Predict rewards along imagined trajectories
 
@@ -882,7 +900,7 @@ for step in range(config.steps):                # Total: 400,000 steps
         #          Code: world_model.py:305 - preprocess()
         #       2. Encode: obs → embedding e_t
         #          Code: world_model.py:77 - encoder(obs)
-        #       3. Posterior inference: (h_{t-1}, z_{t-1}, a_{t-1}, e_t) → (h_t, z_t)
+        #       3. Posterior inference: (h_t-1, z_t-1, a_t-1, e_t) → (h_t, z_t)
         #          Code: rssm.py:269 - obs_step()
         #       4. Sample action: a_t ~ π(·|z_t, h_t)
         #          Code: actor_critic.py:69 - actor(features)
@@ -1133,26 +1151,6 @@ for step in range(config.steps):                # Total: 400,000 steps
         # Save checkpoint
         save_checkpoint(agent, step, logdir)
 ```
-
----
-
-### 4.3 Key Implementation Details
-
-**Gradient Flow:**
-1. **World model training:** Gradients flow through encoder → RSSM → decoder/reward/continuation heads
-2. **Actor training:** Gradients flow through actor → world model dynamics (via "dynamics" gradient estimator)
-3. **Critic training:** Features are detached to prevent gradients flowing into world model
-
-**Efficiency:**
-- **Train ratio = 1024:** Performs 1024 gradient updates per environment step
-- Most computation is in imagination (GPU), not environment interaction (CPU)
-- Enables sample-efficient learning
-
-**Memory Management:**
-- Batch size: 16 sequences
-- Batch length: 64 timesteps
-- Total: 16 × 64 = 1024 transitions per batch
-- Replay buffer: Stores 100,000 transitions
 
 ---
 
@@ -1443,7 +1441,7 @@ x = SiLU()(x)  # Activation function
 
 ### 5.6 Free Bits (KL Lower Bound)
 
-**Problem:** KL divergence can collapse to zero, meaning the posterior q(z_t | h_t, o_t) becomes identical to the prior p(z_t | h_t). This prevents the latent variables from encoding any information.
+**Problem:** KL divergence can collapse to zero, meaning the posterior $q(z_t \mid h_t, o_t)$ becomes identical to the prior $p(z_t \mid h_t)$. This prevents the latent variables from encoding any information.
 
 **Solution:** Clip KL divergence to a minimum threshold (free bits):
 ```
@@ -1593,7 +1591,3 @@ torch.nn.utils.clip_grad_norm_(parameters, max_norm=100.0)
 4. **Reference PyTorch Implementation**: [NM512/dreamerv3-torch](https://github.com/NM512/dreamerv3-torch)
 
 ---
-
-**Last Updated:** 2024
-
-For questions about this implementation, please refer to the paper or explore the linked code sections.
