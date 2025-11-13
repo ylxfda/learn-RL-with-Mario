@@ -649,102 +649,7 @@ The actor and critic are trained using imagined trajectories from the world mode
 
 ---
 
-#### 3.2.1 Actor Loss (Policy Gradient)
-
-**Mathematical Definition:**
-
-$$\mathcal{L}_{actor} = -\mathbb{E}_\tau [w_t \cdot (\hat{V}_\lambda(s_t) - b_t)] - \beta_{ent} \cdot H[\pi(\cdot|s_t)]$$
-
-where:
-- $\tau$: imagined trajectory
-- $w_t$: importance weights (trajectory probability)
-- $\hat{V}_\lambda(s_t)$: λ-return target
-- $b_t$: baseline (for variance reduction)
-- $H[\pi]$: policy entropy
-- $\beta_{ent} = 0.0003$: entropy coefficient
-
-**Gradient Estimator:** DreamerV3 uses the "dynamics" estimator by default:
-
-$$\nabla_\theta \mathcal{L}_{actor} = -\mathbb{E}[w_t \cdot \nabla_\theta \hat{V}_\lambda(s_t)]$$
-
-This allows gradients to flow through the world model dynamics, providing stronger learning signals than standard REINFORCE.
-
-**Entropy Regularization:**
-
-$$\mathcal{L}_{actor} = \mathcal{L}_{actor} - \beta_{ent} \cdot \mathbb{E}[H[\pi(a_t|s_t)]]$$
-
-Encourages exploration by maximizing policy entropy.
-
-**Implementation:**
-```python
-# Compute actor loss with dynamics gradients
-actor_loss = -weights[:-1] * target_return
-
-# Add entropy regularization
-actor_loss = actor_loss - config.actor["entropy"] * actor_entropy
-
-# Mean over batch and time
-actor_loss = torch.mean(actor_loss)
-```
-
-**Code Location:**
-- Main computation: [actor_critic.py:208](../dreamerv3/actor_critic.py#L208) in `_train()`
-- Detailed implementation: [actor_critic.py:404](../dreamerv3/actor_critic.py#L404) in `_compute_actor_loss()`
-
-**Mario Example:**
-- **High target return:** Trajectory leads to flag → increase probability of actions in that trajectory
-- **Low target return:** Trajectory leads to death → decrease probability of those actions
-- **Entropy term:** Encourages trying different actions rather than always moving right
-
----
-
-#### 3.2.2 Critic Loss (Value Function)
-
-**Mathematical Definition:**
-
-$$\mathcal{L}_{critic} = -\mathbb{E}[w_t \cdot \log p(\hat{V}_\lambda(s_t) | s_t)] + \text{(if slow\_target)} \; -\mathbb{E}[\log p(\hat{V}_{slow}(s_t) | s_t)]$$
-
-where:
-- $\hat{V}_\lambda(s_t)$: λ-return target (stop gradient)
-- $\hat{V}_{slow}(s_t)$: slow target network prediction
-- $w_t$: importance weights
-
-**Purpose:** Trains the critic to predict λ-returns accurately. The critic provides baselines for the actor and is used during imagination for bootstrapping.
-
-**Slow Target Regularization (optional):**
-Adds a regularization term using a slowly-updated copy of the value network to stabilize training:
-
-$$V_{slow} \leftarrow 0.98 \cdot V_{slow} + 0.02 \cdot V$$
-
-**Implementation:**
-```python
-# Predict values
-value_dist = self.value(features[:-1])
-
-# Negative log-likelihood of target
-value_loss = -value_dist.log_prob(target.detach())
-
-# Optional: regularization with slow target
-if config.critic["slow_target"]:
-    slow_value_dist = self._slow_value(features[:-1])
-    value_loss = value_loss - value_dist.log_prob(slow_value_dist.mode().detach())
-
-# Weight by trajectory probabilities
-value_loss = torch.mean(weights[:-1] * value_loss)
-```
-
-**Code Location:**
-- Main computation: [actor_critic.py:226](../dreamerv3/actor_critic.py#L226) in `_train()`
-- Slow target update: [actor_critic.py:499](../dreamerv3/actor_critic.py#L499) in `_update_slow_target()`
-
-**Mario Example:**
-- **Target:** $\hat{V}_\lambda(s_t) = 950$ (λ-return computed from imagined trajectory)
-- **Prediction:** $V(s_t) \approx 900$ (critic underestimates)
-- **Loss:** Negative log probability pushes predicted distribution toward 950
-
----
-
-#### 3.2.3 λ-Returns (TD(λ) Targets)
+#### 3.2.1 λ-Returns (TD(λ) Targets)
 
 **Mathematical Definition:**
 
@@ -765,6 +670,8 @@ where:
 - $\lambda = 0$: One-step TD (high bias, low variance)
 - $\lambda = 1$: Monte Carlo (low bias, high variance)
 - $\lambda = 0.95$: Balanced trade-off (DreamerV3 default)
+
+**Purpose:** λ-returns are used as **targets** for both actor and critic training. They provide a better estimate of the true return than either one-step TD or full Monte Carlo rollouts by balancing bias and variance.
 
 **Implementation:**
 ```python
@@ -805,6 +712,212 @@ t=2: r=1000, V(s_3)=0   → V̂_λ(s_2) = 1000 + 0.997·[0.05·0 + 0.95·0] ≈ 
 ```
 
 The λ-returns incorporate the large reward at t=2 backwards through the trajectory.
+
+---
+
+#### 3.2.2 Actor Loss (Policy Gradient)
+
+**Mathematical Definition:**
+
+$$\mathcal{L}_{actor} = -\mathbb{E}_\tau [w_t \cdot \text{objective}_t] - \beta_{ent} \cdot H[\pi(\cdot|s_t)]$$
+
+where:
+- $\tau$: imagined trajectory
+- $w_t$: cumulative discount weights (see explanation below)
+- $\text{objective}_t$: depends on gradient estimator (see below)
+- $H[\pi]$: policy entropy
+- $\beta_{ent} = 0.001$: entropy coefficient (config default)
+
+**What are the weights $w_t$?**
+
+The weights $w_t$ are **cumulative discount factors** that downweight gradient contributions from distant future timesteps:
+
+$$w_t = \prod_{i=0}^{t-1} \gamma_i = \gamma_0 \cdot \gamma_1 \cdot \gamma_2 \cdots \gamma_{t-1}$$
+
+where $\gamma_i = c_i \cdot \gamma_{base}$ (continuation probability × base discount).
+
+**Intuition:**
+- $w_0 = 1$ (current state: full weight)
+- $w_1 = \gamma_0$ (1 step ahead: discounted once)
+- $w_2 = \gamma_0 \cdot \gamma_1$ (2 steps ahead: discounted twice)
+- $w_{15} = \gamma_0 \cdot \gamma_1 \cdots \gamma_{14}$ (15 steps ahead: heavily discounted)
+
+This naturally weights the policy gradient by trajectory probability - states further into the imagined future have exponentially less influence on the gradient.
+
+**Note:** These are NOT importance sampling weights (which would be $\frac{\pi_{new}}{\pi_{old}}$ for off-policy correction). DreamerV3 trains on-policy in imagination, so no importance sampling is needed.
+
+**Gradient Estimators:**
+
+DreamerV3 supports three gradient estimators for the actor loss. The **default is REINFORCE** (config: `imag_gradient='reinforce'`):
+
+**1. REINFORCE (Default for discrete actions):**
+
+In the general formulation above, REINFORCE sets:
+
+$$\text{objective}_t = \text{sg}\left(\frac{\hat{V}_\lambda(s_t) - V_\phi(s_t)}{\max(1, S)}\right) \log \pi_\theta(a_t \mid s_t)$$
+
+So the **complete loss** becomes:
+
+$$\mathcal{L}_{actor} = -\sum_{t=0}^{T-1} w_t \cdot \text{sg}\left(\frac{\hat{V}_\lambda(s_t) - V_\phi(s_t)}{\max(1, S)}\right) \log \pi_\theta(a_t \mid s_t) + \beta H[\pi_\theta(a_t \mid s_t)]$$
+
+where:
+- $w_t$: cumulative discount weights (explained above)
+- $\text{sg}(\cdot)$: stop_gradient (don't backprop through advantage)
+- $\hat{V}_\lambda(s_t) - V_\phi(s_t)$: advantage (how much better than expected)
+- $S$: adaptive normalization scale (see below)
+- $\beta = 0.001$: entropy coefficient
+
+**Adaptive Normalization (Outlier Robustness):**
+
+To handle multi-modal return distributions and outliers, advantages are normalized by the range between 5th and 95th percentiles:
+
+$$S = \text{EMA}(\text{Percentile}(\hat{V}_\lambda, 95) - \text{Percentile}(\hat{V}_\lambda, 5), 0.99)$$
+
+- Computes 5th and 95th percentiles of returns across the batch
+- Takes the range (95th - 5th) to get the scale
+- Smooths using exponential moving average (α=0.99)
+- Normalizes advantage: $\frac{\text{advantage}}{\max(1, S)}$ (prevents division by tiny values)
+
+**Why this normalization?**
+- **Robustness**: Outliers don't dominate the gradient
+- **Multi-modal returns**: Different episodes may have different achievable returns
+- **Stability**: EMA smooths out noisy scale estimates
+
+**How it works**: Multiply log probability of taken action by normalized advantage
+- **Gradient**: $\nabla_\theta \mathcal{L}_{actor} = -\mathbb{E}[\text{sg}(\text{advantage}/S) \cdot \log \pi_\theta(a_t \mid s_t)]$
+- **Pros**: Standard policy gradient, well-understood, works for any action space, robust to outliers
+- **Cons**: High variance (mitigated by baseline and normalization)
+- **Used for**: Discrete actions (like Mario's 7 button combinations)
+
+**2. Dynamics Backpropagation:**
+
+In the general formulation, dynamics backpropagation sets:
+
+$$\text{objective}_t = \hat{V}_\lambda(s_t) - V_\phi(s_t)$$
+
+So the **complete loss** becomes:
+
+$$\mathcal{L}_{actor} = -\sum_{t=0}^{T-1} w_t \cdot (\hat{V}_\lambda(s_t) - V_\phi(s_t)) + \beta H[\pi_\theta(a_t \mid s_t)]$$
+
+- **How it works**: Backpropagate directly through the differentiable world model
+- **Gradient**: $\nabla_\theta \mathcal{L}_{actor} = -\mathbb{E}[w_t \cdot \nabla_\theta \hat{V}_\lambda(s_t)]$
+- **Pros**: Lower variance, leverages differentiable world model
+- **Cons**: Biased if world model is inaccurate, only works with differentiable models
+- **Used for**: Continuous actions or when model quality is high
+
+**3. Both (Interpolation):**
+
+In the general formulation, interpolation sets:
+
+$$\text{objective}_t = \alpha \cdot (\hat{V}_\lambda(s_t) - V_\phi(s_t)) + (1-\alpha) \cdot \text{sg}\left(\frac{\hat{V}_\lambda(s_t) - V_\phi(s_t)}{\max(1, S)}\right) \log \pi_\theta(a_t \mid s_t)$$
+
+So the **complete loss** becomes:
+
+$$\mathcal{L}_{actor} = -\sum_{t=0}^{T-1} w_t \cdot \text{objective}_t + \beta H[\pi_\theta(a_t \mid s_t)]$$
+
+- Interpolates between dynamics ($\alpha$) and REINFORCE ($1-\alpha$)
+- Config: `imag_gradient='both'` with `imag_gradient_mix` setting $\alpha$
+
+---
+
+**Implementation:**
+```python
+# Recompute policy distribution
+policy = self.actor(imag_feat.detach())
+
+# Choose gradient estimator
+if config.imag_gradient == "reinforce":
+    # REINFORCE: log π(a|s) * advantage
+    actor_target = (
+        policy.log_prob(imag_action)[:-1] *
+        (target - self.value(imag_feat[:-1]).mode()).detach()
+    )
+elif config.imag_gradient == "dynamics":
+    # Dynamics: backprop through world model
+    actor_target = target - baseline
+elif config.imag_gradient == "both":
+    # Interpolation between the two
+    mix = config.imag_gradient_mix
+    actor_target = mix * (target - baseline) + (1 - mix) * reinforce_target
+
+# Weighted negative objective
+actor_loss = -weights[:-1] * actor_target
+
+# Add entropy regularization
+actor_loss = actor_loss - config.actor["entropy"] * actor_entropy
+
+# Mean over batch and time
+actor_loss = torch.mean(actor_loss)
+```
+
+**Code Location:**
+- Main computation: [actor_critic.py:208](../dreamerv3/actor_critic.py#L208) in `_train()`
+- Gradient estimator selection: [actor_critic.py:458-492](../dreamerv3/actor_critic.py#L458-L492) in `_compute_actor_loss()`
+- Config: [dreamer_configs.yaml:153](../configs/dreamer_configs.yaml#L153) sets `imag_gradient='reinforce'`
+
+**Mario Example:**
+
+Using **REINFORCE** (default):
+- **Good trajectory** (leads to flag, $\hat{V}_\lambda = 1100$, $V = 500$):
+  - Advantage: $1100 - 500 = +600$ (positive)
+  - For each action in trajectory: Increase $\log \pi_\theta(a_t \mid s_t)$
+  - Effect: Make those actions more likely in similar states
+
+- **Bad trajectory** (Mario dies, $\hat{V}_\lambda = -50$, $V = 500$):
+  - Advantage: $-50 - 500 = -550$ (negative)
+  - For each action in trajectory: Decrease $\log \pi_\theta(a_t \mid s_t)$
+  - Effect: Make those actions less likely in similar states
+
+- **Entropy term:** Encourages trying different button combinations rather than always moving right
+
+---
+
+#### 3.2.3 Critic Loss (Value Function)
+
+**Mathematical Definition:**
+
+$$\mathcal{L}_{critic} = -\mathbb{E}[w_t \cdot \log p(\hat{V}_\lambda(s_t) | s_t)] + \text{(if slow\_target)} \; -\mathbb{E}[\log p(\hat{V}_{slow}(s_t) | s_t)]$$
+
+where:
+- $\hat{V}_\lambda(s_t)$: λ-return target (stop gradient, see Section 3.2.1)
+- $\hat{V}_{slow}(s_t)$: slow target network prediction
+- $w_t$: cumulative discount weights (same as actor loss, see Section 3.2.2)
+
+**Purpose:** Trains the critic to predict λ-returns accurately. The critic provides baselines for the actor and is used during imagination for bootstrapping.
+
+**Slow Target Regularization:**
+
+Enabled by default (`slow_target=True` in config). Adds a regularization term using a slowly-updated copy of the value network to stabilize training:
+
+$$V_{slow} \leftarrow 0.99 \cdot V_{slow} + 0.01 \cdot V$$
+
+Updated every 100 steps (config: `slow_target_update=100`, `slow_target_fraction=0.01`).
+
+**Implementation:**
+```python
+# Predict values
+value_dist = self.value(features[:-1])
+
+# Negative log-likelihood of target
+value_loss = -value_dist.log_prob(target.detach())
+
+# Optional: regularization with slow target
+if config.critic["slow_target"]:
+    slow_value_dist = self._slow_value(features[:-1])
+    value_loss = value_loss - value_dist.log_prob(slow_value_dist.mode().detach())
+
+# Weight by trajectory probabilities
+value_loss = torch.mean(weights[:-1] * value_loss)
+```
+
+**Code Location:**
+- Main computation: [actor_critic.py:226](../dreamerv3/actor_critic.py#L226) in `_train()`
+- Slow target update: [actor_critic.py:499](../dreamerv3/actor_critic.py#L499) in `_update_slow_target()`
+
+**Mario Example:**
+- **Target:** $\hat{V}_\lambda(s_t) = 950$ (λ-return computed from imagined trajectory)
+- **Prediction:** $V(s_t) \approx 900$ (critic underestimates)
+- **Loss:** Negative log probability pushes predicted distribution toward 950
 
 ---
 
