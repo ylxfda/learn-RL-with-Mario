@@ -83,7 +83,7 @@ What if Mario just tries random actions, and after each episode, we make actions
 After completing an episode, compute the total return $G_t = \sum_{k=t}^{T} \gamma^{k-t} r_k$ from each time step, then update:
 
 $$
-\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}[\nabla_\theta \log \pi_\theta(a_t|s_t) \, G_t] \tag{1}
+\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}[\nabla_\theta \log \pi_\theta(a_t|s_t) \, G_t]
 $$
 
 **Step-by-Step Derivation:**
