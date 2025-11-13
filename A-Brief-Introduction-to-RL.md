@@ -88,7 +88,11 @@ $$
 
 **Step-by-Step Derivation:**
 
-Let's derive this equation from first principles. Our goal is to maximize $J(\theta) = \mathbb{E}_{\pi_\theta}[G_0]$, where $G_0$ is the total return from the start of an episode.
+Let's derive this equation from first principles. Our goal is to maximize:
+
+$$J(\theta) = \mathbb{E}_{\pi_\theta}[G_0]$$
+
+where $G_0$ is the total return from the start of an episode.
 
 **Step 1: Expand the expectation**
 
