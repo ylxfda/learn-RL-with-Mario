@@ -27,11 +27,18 @@ Perhaps you're here because you wondered: *"How do computers learn to play games
 
 👉 [Read: A Brief Introduction to Reinforcement Learning](A-Brief-Introduction-to-RL.md)
 
+> 💡 **Note:** This guide contains mathematical equations. For the best reading experience:
+> - View on **GitHub** (equations render automatically)
+> - Use **VS Code's markdown preview** (Ctrl+Shift+V / Cmd+Shift+V)
+> - Use other markdown viewers with LaTeX support
+
 This question-driven guide walks you through the *why* behind each algorithm. You'll understand not just the formulas, but the **problems** each method solves and the **insights** that led to the next breakthrough. This guide is far from a comprehensive RL course, but it should be able to give you a quick overview of different RL algorithms and have you prepared to the next step.
 
 Once you grasp the concepts, the next question probably is how theoretical ideas transform into working code? So far two RL algorithms have been implemented:
-- **PPO** implementation in [`PPO/`](PPO/)
-- **DreamerV3** implementation in [`dreamerv3/`](dreamerv3/)
+- **PPO** implementation in [`PPO/`](PPO/) — see [`PPO/README.md`](PPO/README.md) for details
+- **DreamerV3** implementation in [`dreamerv3/`](dreamerv3/) — see [`dreamerv3/README.md`](dreamerv3/README.md) for details
+
+> 💡 **Note:** The algorithm documentation contains mathematical equations. For the best reading experience, view on GitHub or use VS Code's markdown preview (Ctrl+Shift+V / Cmd+Shift+V).
 
 As most variable and class naming follows the conventions from the original papers with detailed comments, the code is pretty much self-explanatory if you've read the papers.
 
