@@ -150,6 +150,16 @@ Here are examples of both algorithms successfully completing Super Mario Bros St
 
 ---
 
+## 🙏 Acknowledgments
+
+This project builds upon and was inspired by several excellent implementations:
+
+1. [NaturalDreamer](https://github.com/InexperiencedMe/NaturalDreamer) - A minimal DreamerV3 implementation
+2. [dreamerv3-torch](https://github.com/NM512/dreamerv3-torch) - PyTorch implementation of DreamerV3
+3. [dreamerv3](https://github.com/danijar/dreamerv3) - Official DreamerV3 implementation by Danijar Hafner
+
+---
+
 ## 📜 License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
